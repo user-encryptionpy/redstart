@@ -71,7 +71,7 @@ def _():
     import autograd.numpy as np
     import autograd.numpy.linalg as la
     from autograd import isinstance, tuple
-    return FFMpegWriter, FuncAnimation, np, plt, tqdm
+    return FFMpegWriter, FuncAnimation, np, plt, sci, tqdm
 
 
 @app.cell(hide_code=True)
@@ -218,7 +218,7 @@ def _():
     g = 1.0  
     M = 1.0  
     l = 1.0  
-    return M, l
+    return M, g, l
 
 
 @app.cell(hide_code=True)
@@ -237,35 +237,33 @@ def _(mo):
 def _(mo):
     mo.md(
         r"""
+    Les composantes de la force appliquée au booster par le réacteur sont :
 
-        Les composantes de la force appliquée au booster par le réacteur sont :
+    $f_x = -f \cdot \sin(\theta + \phi)$
 
-        $f_x = -f \cdot \sin(\theta + \phi)$
+    $f_y = f \cdot \cos(\theta + \phi)$
 
-        $f_y = f \cdot \cos(\theta + \phi)$
+    Où :
 
-        Où :
-    
-        $f$ : est la magnitude de la force 
-    
-        $\theta$ : est l'angle principal
-    
-        $\phi$ : est le déphasage
+    $f$ : est la magnitude de la force 
 
-            Étapes de résolution :
-    
-        1. Dans le référentiel local du booster, la force du réacteur fait un angle $\phi$ avec l'axe du booster
-    
-        2. L'axe du booster lui-même fait un angle $\theta$ avec la verticale dans le référentiel global
-    
-        3. Par conséquent, dans le référentiel global, la force fait un angle $(\theta + \phi)$ avec la verticale
-    
-        4. La décomposition vectorielle de cette force donne alors :
-    
-           - Composante horizontale : $f_x = -f \cdot \sin(\theta + \phi)$
-       
-           - Composante verticale : $f_y = f \cdot \cos(\theta + \phi)$
+    $\theta$ : est l'angle principal
 
+    $\phi$ : est le déphasage
+
+        Étapes de résolution :
+
+    1. Dans le référentiel local du booster, la force du réacteur fait un angle $\phi$ avec l'axe du booster
+
+    2. L'axe du booster lui-même fait un angle $\theta$ avec la verticale dans le référentiel global
+
+    3. Par conséquent, dans le référentiel global, la force fait un angle $(\theta + \phi)$ avec la verticale
+
+    4. La décomposition vectorielle de cette force donne alors :
+
+       - Composante horizontale : $f_x = -f \cdot \sin(\theta + \phi)$
+
+       - Composante verticale : $f_y = f \cdot \cos(\theta + \phi)$
     """
     )
     return
@@ -304,35 +302,35 @@ def _(mo):
 def _(mo):
     mo.md(
         r"""
-       Les équations du mouvement pour le centre de masse sont :
-   
-       $\frac{d^2x}{dt^2} = \frac{f}{M} \cdot \sin(\theta + \phi)$
-   
-       $\frac{d^2y}{dt^2} = \frac{f}{M} \cdot \cos(\theta + \phi) - g$
-   
-       Où :
-   
-       $M$ : est la masse du booster
-   
-       $g$ : est la constante de gravité
-   
-       Étapes de résolution :
-   
-       1. Appliquons la seconde loi de Newton ($\vec{F} = m\vec{a}$) au centre de masse du booster
-   
-       2. Les forces agissant sur le booster sont :
-          - La gravité : $(0, -Mg)$
-          - La force du réacteur : $(f_x, f_y) = (f \cdot \sin(\theta + \phi), f \cdot \cos(\theta + \phi))$
-   
-       3. Selon l'axe $x$ :
-          $M \cdot \frac{d^2x}{dt^2} = f_x = f \cdot \sin(\theta + \phi)$
-      
-          Donc $\frac{d^2x}{dt^2} = \frac{f}{M} \cdot \sin(\theta + \phi)$
-   
-       4. Selon l'axe $y$ :
-          $M \cdot \frac{d^2y}{dt^2} = f_y - Mg = f \cdot \cos(\theta + \phi) - Mg$
-      
-          Donc $\frac{d^2y}{dt^2} = \frac{f}{M} \cdot \cos(\theta + \phi) - g$
+    Les équations du mouvement pour le centre de masse sont :
+
+    $\frac{d^2x}{dt^2} = \frac{f}{M} \cdot \sin(\theta + \phi)$
+
+    $\frac{d^2y}{dt^2} = \frac{f}{M} \cdot \cos(\theta + \phi) - g$
+
+    Où :
+
+    $M$ : est la masse du booster
+
+    $g$ : est la constante de gravité
+
+    Étapes de résolution :
+
+    1. Appliquons la seconde loi de Newton ($\vec{F} = m\vec{a}$) au centre de masse du booster
+
+    2. Les forces agissant sur le booster sont :
+       - La gravité : $(0, -Mg)$
+       - La force du réacteur : $(f_x, f_y) = (f \cdot \sin(\theta + \phi), f \cdot \cos(\theta + \phi))$
+
+    3. Selon l'axe $x$ :
+       $M \cdot \frac{d^2x}{dt^2} = f_x = f \cdot \sin(\theta + \phi)$
+
+       Donc $\frac{d^2x}{dt^2} = \frac{f}{M} \cdot \sin(\theta + \phi)$
+
+    4. Selon l'axe $y$ :
+       $M \cdot \frac{d^2y}{dt^2} = f_y - Mg = f \cdot \cos(\theta + \phi) - Mg$
+
+       Donc $\frac{d^2y}{dt^2} = \frac{f}{M} \cdot \cos(\theta + \phi) - g$
     """
     )
     return
@@ -353,7 +351,7 @@ def _(mo):
 @app.cell
 def _(M, l):
     J = M * l**2 / 3
-    return
+    return (J,)
 
 
 @app.cell(hide_code=True)
@@ -461,6 +459,90 @@ def _(mo):
     Test this typical example with your function `redstart_solve` and check that its graphical output makes sense.
     """
     )
+    return
+
+
+@app.cell
+def _(J, M, g, l, np, plt, sci):
+    def redstart_dynamics(t, state_vector, f_phi_func, M_const, g_const, l_const, J_const):
+
+        x, dx, y, dy, theta, dtheta = state_vector
+        f, phi = f_phi_func(t, state_vector)
+
+        x_ddot = -(f / M_const) * np.sin(theta + phi)
+        y_ddot = -g_const + (f / M_const) * np.cos(theta + phi)
+        theta_ddot = (l_const * f / J_const) * np.sin(phi)
+
+
+        derivatives = np.array([
+            dx,
+            x_ddot,
+            dy,
+            y_ddot,
+            dtheta,
+            theta_ddot
+        ])
+        return derivatives
+
+    def redstart_solve(t_span, y0, f_phi_func):
+    
+        sol_scipy = sci.solve_ivp(
+            fun=redstart_dynamics,
+            t_span=t_span,
+            y0=y0,
+            args=(f_phi_func, M, g, l, J), 
+            dense_output=True,             
+            method='RK45'                  
+
+        )
+
+        return sol_scipy.sol
+
+    # TEST 
+    def free_fall_example():
+        t_span = [0.0, 5.0]
+        y0 = np.array([0.0, 0.0, 10.0, 0.0, 0.0, 0.0])
+
+        def f_phi_free_fall(t, y_state):
+            return np.array([0.0, 0.0]) 
+
+        print(f"\nRunning free_fall_example with y0={y0}...")
+        sol_function = redstart_solve(t_span, y0, f_phi_free_fall)
+
+
+        print(f"State at t=0: {sol_function(0.0)}")
+        print(f"State at t=1.0: {sol_function(1.0)}")
+
+        t_eval = np.linspace(t_span[0], t_span[1], 100)
+        y_trajectory = sol_function(t_eval)
+        x_t = y_trajectory[0]
+        dx_t = y_trajectory[1]
+        y_t = y_trajectory[2]
+        dy_t = y_trajectory[3]
+        theta_t = y_trajectory[4]
+        dtheta_t = y_trajectory[5]
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(t_eval, y_t, label=r"$y(t)$ (height of CoM in meters)")
+        plt.plot(t_eval, l * np.ones_like(t_eval), color="grey", ls="--", label=r"Booster half-length line $y=\ell$")
+        plt.plot(t_eval, y_t - l * np.cos(theta_t), color="green", ls=":", label=r"Base height $y(t) - \ell \cos(\theta(t))$")
+        plt.plot(t_eval, y_t + l * np.cos(theta_t), color="purple", ls=":", label=r"Nose height $y(t) + \ell \cos(\theta(t))$")
+
+
+        plt.title("Free Fall Test for Redstart Booster")
+        plt.xlabel("Time $t$ (seconds)")
+        plt.ylabel("Position $y$ (meters)")
+        plt.grid(True)
+        plt.legend()
+        plt.ylim(min(y_t.min() -1, -l-1) , y0[2] + 1) 
+        y_analytical = y0[2] - 0.5 * g * t_eval**2
+        plt.plot(t_eval, y_analytical, 'r.', markersize=2, label="Analytical $y(t)$ (free fall)")
+        plt.legend()
+        return plt.gcf()
+
+
+    fig = free_fall_example()
+    plt.show()
     return
 
 
