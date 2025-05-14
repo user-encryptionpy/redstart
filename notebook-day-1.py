@@ -549,6 +549,12 @@ def _(J, M, g, l, np, plt, sci):
 
 @app.cell(hide_code=True)
 def _(mo):
+    mo.md(r"""la poussée f est nulle, le mouvement est uniquement gouverné par la gravité et les conditions initiales (hauteur de départ de 10m, vitesse initiale nulle), alors les courbes dans la figure sont y(t) (courbe bleue principale) : Altitude du centre de masse (la variable la plus directe issue de la simulation de la dynamique verticale de la fusée. Elle montre comment la hauteur du centre de gravité évolue avec le temps. C'est la courbe fondamentale) tandis que y_base(t) (courbe verte en pointillés) et y_nose(t) (courbe violette en pointillés) sont les altitudes de la base et du nez de la fusée.""")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md(
         r"""
     ## 🧩 Controlled Landing
@@ -662,6 +668,11 @@ def _(l, np, plt, redstart_solve):
 
     f_at_t0 = f_control_landing(0)
     print(f"\nCalculated f(0) = {f_at_t0:.4f} N")
+    return
+
+
+@app.cell
+def _():
     return
 
 
@@ -843,6 +854,11 @@ def _(mo):
     As an intermediary step, you can begin with production of image snapshots of the booster location (every 1 sec).
     """
     )
+    return
+
+
+@app.cell
+def _():
     return
 
 
