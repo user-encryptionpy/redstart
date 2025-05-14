@@ -543,7 +543,7 @@ def _(J, M, g, l, np, plt, sci):
 
     fig = free_fall_example()
     plt.show()
-    return
+    return (redstart_solve,)
 
 
 @app.cell(hide_code=True)
@@ -557,6 +557,110 @@ def _(mo):
     Simulate the corresponding scenario to check that your solution works as expected.
     """
     )
+    return
+
+
+@app.cell
+def _(l, np, plt, redstart_solve):
+    #define the derived f(t)
+    def f_control_landing(t):
+        return (108/125) * t - (29/25)
+
+    def f_phi_controlled_landing(t, state_vector):
+        f_val = f_control_landing(t)
+        phi_val = 0.0  
+        return np.array([f_val, phi_val])
+
+    # Initial conditions 
+    y0_landing = np.array([
+        0.0,  # x
+        0.0,  # dx/dt
+        10.0, # y
+        0.0,  # dy/dt
+        0.0,  # theta
+        0.0   # dtheta/dt
+    ])
+
+    t_final_landing = 5.0
+    t_span_landing = [0.0, t_final_landing]
+
+    print(f"Simulating controlled landing...")
+    print(f"Initial state: {y0_landing}")
+    print(f"Target y({t_final_landing}) = {l}, dy/dt({t_final_landing}) = 0")
+
+    sol_landing_func = redstart_solve(t_span_landing, y0_landing, f_phi_controlled_landing)
+
+    # Evaluate solution
+    t_eval_landing = np.linspace(t_span_landing[0], t_span_landing[1], 500)
+    trajectory_landing = sol_landing_func(t_eval_landing)
+
+    x_land, dx_land, y_land, dy_land, theta_land, dtheta_land = trajectory_landing
+
+    # Check final conditions
+    print(f"\nSimulation results at t = {t_final_landing}:")
+    print(f"  x({t_final_landing})     = {x_land[-1]:.4f} (Target: 0)")
+    print(f"  dx/dt({t_final_landing}) = {dx_land[-1]:.4f} (Target: 0)")
+    print(f"  y({t_final_landing})     = {y_land[-1]:.4f} (Target: {l})")
+    print(f"  dy/dt({t_final_landing}) = {dy_land[-1]:.4f} (Target: 0)")
+    print(f"  theta({t_final_landing}) = {np.degrees(theta_land[-1]):.4f} deg (Target: 0)")
+    print(f"  dtheta/dt({t_final_landing}) = {np.degrees(dtheta_land[-1]):.4f} deg/s (Target: 0)")
+
+    fig_land, axs = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+
+    axs[0].plot(t_eval_landing, y_land, label=r'$y(t)$ (CoM height)')
+    axs[0].plot(t_eval_landing, y_land - l * np.cos(theta_land), ls="--", label=r'$y_{base}(t)$')
+    axs[0].axhline(l, color='r', ls=':', label=f'Target $y={l}$')
+    axs[0].axhline(0, color='k', ls='-', lw=0.5)
+    axs[0].set_ylabel('Position y (m)')
+    axs[0].legend()
+    axs[0].grid(True)
+
+    ax0_twin = axs[0].twinx()
+    ax0_twin.plot(t_eval_landing, dy_land, color='green', label=r'$\dot{y}(t)$ (CoM velocity)')
+    ax0_twin.axhline(0, color='green', ls=':', label=r'Target $\dot{y}=0$')
+    ax0_twin.set_ylabel(r'Velocity $\dot{y}$ (m/s)', color='green')
+    ax0_twin.tick_params(axis='y', labelcolor='green')
+    ax0_twin.legend(loc='center right')
+
+    axs[0].set_title('Controlled Landing: Vertical Motion')
+
+    # Plot theta and dtheta/dt (should be zero)
+    axs[1].plot(t_eval_landing, np.degrees(theta_land), label=r'$\theta(t)$ (Booster angle)')
+    axs[1].set_ylabel('Angle (degrees)')
+    axs[1].legend()
+    axs[1].grid(True)
+
+    ax1_twin = axs[1].twinx()
+    ax1_twin.plot(t_eval_landing, np.degrees(dtheta_land), color='purple', label=r'$\dot{\theta}(t)$ (Angular velocity)')
+    ax1_twin.set_ylabel('Angular Velocity (deg/s)', color='purple')
+    ax1_twin.tick_params(axis='y', labelcolor='purple')
+    ax1_twin.legend(loc='center right')
+    axs[1].set_title('Rotational Motion (Should be Zero)')
+
+
+    f_values_eval = np.array([f_phi_controlled_landing(t, None)[0] for t in t_eval_landing])
+    phi_values_eval = np.array([f_phi_controlled_landing(t, None)[1] for t in t_eval_landing])
+
+    axs[2].plot(t_eval_landing, f_values_eval, label=r'$f(t)$ (Thrust Magnitude)')
+    axs[2].axhline(0, color='k', ls=':', label='f=0 line')
+    axs[2].set_ylabel('Force f (N)')
+    axs[2].legend(loc='upper left')
+    axs[2].grid(True)
+
+    ax2_twin = axs[2].twinx()
+    ax2_twin.plot(t_eval_landing, np.degrees(phi_values_eval), color='orange', label=r'$\phi(t)$ (Thrust Angle)')
+    ax2_twin.set_ylabel(r'Angle $\phi$ (degrees)', color='orange')
+    ax2_twin.tick_params(axis='y', labelcolor='orange')
+    ax2_twin.legend(loc='center right')
+
+    axs[2].set_title('Control Inputs')
+    axs[2].set_xlabel('Time t (s)')
+
+    plt.tight_layout()
+    plt.show()
+
+    f_at_t0 = f_control_landing(0)
+    print(f"\nCalculated f(0) = {f_at_t0:.4f} N")
     return
 
 
@@ -589,6 +693,11 @@ def _(mo):
     The function shall accept the parameters `x`, `y`, `theta`, `f` and `phi`.
     """
     )
+    return
+
+
+@app.cell
+def _():
     return
 
 
