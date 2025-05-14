@@ -63,6 +63,7 @@ def _():
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation, FFMpegWriter
+    import matplotlib.patches as patches
 
     from tqdm import tqdm
 
@@ -71,7 +72,7 @@ def _():
     import autograd.numpy as np
     import autograd.numpy.linalg as la
     from autograd import isinstance, tuple
-    return FFMpegWriter, FuncAnimation, np, plt, sci, tqdm
+    return FFMpegWriter, FuncAnimation, np, patches, plt, sci, tqdm
 
 
 @app.cell(hide_code=True)
@@ -697,7 +698,129 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(np, patches, plt):
+    def draw_booster_state(ax, x, y, theta, f_thrust, phi_gimbal,
+                           booster_l, M_booster, g_gravity):
+   
+        BOOSTER_WIDTH = booster_l * 0.4  
+        FLAME_BASE_WIDTH = BOOSTER_WIDTH * 0.85
+        MIN_THRUST_FOR_FLAME = 1e-3
+        MAX_VISUAL_FLAME_LENGTH = booster_l * 4.0
+
+        u_axis_CoM_to_Nose = np.array([-np.sin(theta), np.cos(theta)])
+        u_perp_CoM_to_Right = np.array([np.cos(theta), np.sin(theta)])
+
+        C1_NoseRight = (np.array([x, y]) + booster_l * u_axis_CoM_to_Nose +
+                        (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+        C2_NoseLeft = (np.array([x, y]) + booster_l * u_axis_CoM_to_Nose -
+                       (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+        C3_BaseLeft = (np.array([x, y]) - booster_l * u_axis_CoM_to_Nose -
+                       (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+        C4_BaseRight = (np.array([x, y]) - booster_l * u_axis_CoM_to_Nose +
+                        (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+   
+        booster_patch = patches.Polygon([C1_NoseRight, C2_NoseLeft, C3_BaseLeft, C4_BaseRight],
+                                        closed=True, fc='slategrey', ec='black', zorder=10)
+        ax.add_patch(booster_patch)
+
+        if f_thrust > MIN_THRUST_FOR_FLAME:
+            P_base_center = np.array([x, y]) - booster_l * u_axis_CoM_to_Nose
+
+            e_theta_CoM_to_base = np.array([np.sin(theta), -np.cos(theta)])
+            e_theta_perp_CCW = np.array([np.cos(theta), np.sin(theta)])
+
+            u_flame_axis = (np.cos(phi_gimbal) * e_theta_CoM_to_base +
+                            np.sin(phi_gimbal) * e_theta_perp_CCW)
+       
+            norm_flame_axis = np.linalg.norm(u_flame_axis)
+            if norm_flame_axis > 1e-6:
+                u_flame_axis /= norm_flame_axis
+       
+            if M_booster > 1e-6 and g_gravity > 1e-6:
+                flame_L = (booster_l / (M_booster * g_gravity)) * f_thrust
+            else:
+                flame_L = booster_l * (f_thrust / (1.0 if M_booster < 1e-6 else M_booster))
+       
+            flame_L = np.clip(flame_L, 0, MAX_VISUAL_FLAME_LENGTH)
+       
+            u_flame_perp = np.array([-u_flame_axis[1], u_flame_axis[0]])
+
+            P_flame_Apex = P_base_center + flame_L * u_flame_axis
+            P_flame_BaseLeft = P_base_center - (FLAME_BASE_WIDTH / 2) * u_flame_perp
+            P_flame_BaseRight = P_base_center + (FLAME_BASE_WIDTH / 2) * u_flame_perp
+       
+            flame_patch = patches.Polygon([P_flame_BaseLeft, P_flame_BaseRight, P_flame_Apex],
+                                          closed=True, fc='orangered', ec='none', alpha=0.75, zorder=5)
+            ax.add_patch(flame_patch)
+   
+        ground_exists = any(line.get_label() == '_ground_line' for line in ax.lines)
+        if not ground_exists:
+            ax.axhline(0, color='darkgreen', linewidth=2, label='_ground_line', zorder=1)
+
+        target_exists = any(line.get_label() == '_target_marker' for line in ax.lines)
+        if not target_exists:
+            ax.plot(0, 0, 'X', color='red', markersize=15, markeredgewidth=3, label='_target_marker', zorder=2)
+
+    fig2, ax = plt.subplots(figsize=(8, 10))
+
+    BOOSTER_L_HALF = 1.0  
+    BOOSTER_MASS = 1.0  
+    GRAVITY_G = 1.0      
+
+    x_com1 = 1.0 * BOOSTER_L_HALF
+    y_com1 = 3.0 * BOOSTER_L_HALF
+    theta_angle1_deg = 15.0
+    theta1_rad = np.deg2rad(theta_angle1_deg)
+
+    f1_thrust = BOOSTER_MASS * GRAVITY_G
+    phi1_gimbal_rad = -theta1_rad
+
+    print(f"Drawing Scenario 1: Tilted, f=Mg (Flame length should be {BOOSTER_L_HALF:.2f})")
+    draw_booster_state(ax, x=x_com1, y=y_com1, theta=theta1_rad,
+                           f_thrust=f1_thrust, phi_gimbal=phi1_gimbal_rad,
+                           booster_l=BOOSTER_L_HALF, M_booster=BOOSTER_MASS, g_gravity=GRAVITY_G)
+    ax.arrow(x_com1, y_com1, 0, 0.5 * BOOSTER_L_HALF, head_width=0.1, fc='blue', ec='blue', zorder=20)
+
+    x_com2 = -2.0 * BOOSTER_L_HALF
+    y_com2 = 4.0 * BOOSTER_L_HALF
+    theta2_rad = np.deg2rad(0.0)
+
+    f2_thrust = 2.0 * BOOSTER_MASS * GRAVITY_G
+    phi2_gimbal_rad = np.deg2rad(0.0)
+
+    print(f"\nDrawing Scenario 2: Vertical, f=2Mg (Flame length should be {2*BOOSTER_L_HALF:.2f})")
+    draw_booster_state(ax, x=x_com2, y=y_com2, theta=theta2_rad,
+                           f_thrust=f2_thrust, phi_gimbal=phi2_gimbal_rad,
+                           booster_l=BOOSTER_L_HALF, M_booster=BOOSTER_MASS, g_gravity=GRAVITY_G)
+
+    ax.arrow(x_com2, y_com2, 0, 0.5 * BOOSTER_L_HALF, head_width=0.1, fc='green', ec='green', zorder=20)
+
+
+    x_com3 = -4.0 * BOOSTER_L_HALF
+    y_com3 = 2.5 * BOOSTER_L_HALF
+    theta3_rad = np.deg2rad(0.0)
+   
+    f3_thrust = 0.5 * BOOSTER_MASS * GRAVITY_G
+    phi3_gimbal_rad = np.deg2rad(0.0)
+
+    print(f"\nDrawing Scenario 3: Vertical, f=0.5Mg (Flame length should be {0.5*BOOSTER_L_HALF:.2f})")
+    draw_booster_state(ax, x=x_com3, y=y_com3, theta=theta3_rad,
+                           f_thrust=f3_thrust, phi_gimbal=phi3_gimbal_rad,
+                           booster_l=BOOSTER_L_HALF, M_booster=BOOSTER_MASS, g_gravity=GRAVITY_G)
+    ax.arrow(x_com3, y_com3, 0, 0.5 * BOOSTER_L_HALF, head_width=0.1, fc='purple', ec='purple', zorder=20)
+
+
+    ax.set_title(f"Redstart Booster Visualization (ℓ={BOOSTER_L_HALF}, M={BOOSTER_MASS}, g={GRAVITY_G})")
+    ax.set_xlabel("x position (m)")
+    ax.set_ylabel("y position (m)")
+   
+    ax.set_xlim(-6 * BOOSTER_L_HALF, 4 * BOOSTER_L_HALF)
+    ax.set_ylim(-1 * BOOSTER_L_HALF, 7 * BOOSTER_L_HALF)
+   
+    ax.set_aspect('equal', adjustable='box')
+    ax.grid(True, linestyle='--', alpha=0.7)
+       
+    plt.show()
     return
 
 
