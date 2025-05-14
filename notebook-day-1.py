@@ -213,6 +213,14 @@ def _(mo):
     return
 
 
+@app.cell
+def _():
+    g = 1.0  
+    M = 1.0  
+    l = 1.0  
+    return M, l
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -222,6 +230,61 @@ def _(mo):
     Compute the force $(f_x, f_y) \in \mathbb{R}^2$ applied to the booster by the reactor.
     """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+
+        Les composantes de la force appliquée au booster par le réacteur sont :
+
+        $f_x = f \cdot \sin(\theta + \phi)$
+
+        $f_y = f \cdot \cos(\theta + \phi)$
+
+        Où :
+    
+        $f$ : est la magnitude de la force 
+    
+        $\theta$ : est l'angle principal
+    
+        $\phi$ : est le déphasage
+
+            Étapes de résolution :
+    
+        1. Dans le référentiel local du booster, la force du réacteur fait un angle $\phi$ avec l'axe du booster
+    
+        2. L'axe du booster lui-même fait un angle $\theta$ avec la verticale dans le référentiel global
+    
+        3. Par conséquent, dans le référentiel global, la force fait un angle $(\theta + \phi)$ avec la verticale
+    
+        4. La décomposition vectorielle de cette force donne alors :
+    
+           - Composante horizontale : $f_x = f \cdot \sin(\theta + \phi)$
+       
+           - Composante verticale : $f_y = f \cdot \cos(\theta + \phi)$
+
+    """
+    )
+    return
+
+
+@app.cell
+def _(np):
+    f = 10.0
+
+    def force_components(theta, phi):
+        fx = f * np.sin(theta + phi)
+        fy = f * np.cos(theta + phi)
+        return fx, fy
+
+    theta = np.pi/6  
+    phi = np.pi/4    
+
+    fx, fy = force_components(theta, phi)
+    fx, fy
     return
 
 
@@ -241,11 +304,55 @@ def _(mo):
 def _(mo):
     mo.md(
         r"""
+       Les équations du mouvement pour le centre de masse sont :
+   
+       $\frac{d^2x}{dt^2} = \frac{f}{M} \cdot \sin(\theta + \phi)$
+   
+       $\frac{d^2y}{dt^2} = \frac{f}{M} \cdot \cos(\theta + \phi) - g$
+   
+       Où :
+   
+       $M$ : est la masse du booster
+   
+       $g$ : est la constante de gravité
+   
+       Étapes de résolution :
+   
+       1. Appliquons la seconde loi de Newton ($\vec{F} = m\vec{a}$) au centre de masse du booster
+   
+       2. Les forces agissant sur le booster sont :
+          - La gravité : $(0, -Mg)$
+          - La force du réacteur : $(f_x, f_y) = (f \cdot \sin(\theta + \phi), f \cdot \cos(\theta + \phi))$
+   
+       3. Selon l'axe $x$ :
+          $M \cdot \frac{d^2x}{dt^2} = f_x = f \cdot \sin(\theta + \phi)$
+      
+          Donc $\frac{d^2x}{dt^2} = \frac{f}{M} \cdot \sin(\theta + \phi)$
+   
+       4. Selon l'axe $y$ :
+          $M \cdot \frac{d^2y}{dt^2} = f_y - Mg = f \cdot \cos(\theta + \phi) - Mg$
+      
+          Donc $\frac{d^2y}{dt^2} = \frac{f}{M} \cdot \cos(\theta + \phi) - g$
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
     ## 🧩 Moment of inertia
 
     Compute the moment of inertia $J$ of the booster and define the corresponding Python variable `J`.
     """
     )
+    return
+
+
+@app.cell
+def _(M, l):
+    J = M * l**2 / 3
     return
 
 
@@ -258,6 +365,12 @@ def _(mo):
     Give the ordinary differential equation that governs the tilt angle $\theta$.
     """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r""" """)
     return
 
 
