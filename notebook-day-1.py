@@ -240,7 +240,7 @@ def _(mo):
 
         Les composantes de la force appliquée au booster par le réacteur sont :
 
-        $f_x = f \cdot \sin(\theta + \phi)$
+        $f_x = -f \cdot \sin(\theta + \phi)$
 
         $f_y = f \cdot \cos(\theta + \phi)$
 
@@ -262,7 +262,7 @@ def _(mo):
     
         4. La décomposition vectorielle de cette force donne alors :
     
-           - Composante horizontale : $f_x = f \cdot \sin(\theta + \phi)$
+           - Composante horizontale : $f_x = -f \cdot \sin(\theta + \phi)$
        
            - Composante verticale : $f_y = f \cdot \cos(\theta + \phi)$
 
@@ -276,7 +276,7 @@ def _(np):
     f = 10.0
 
     def force_components(theta, phi):
-        fx = f * np.sin(theta + phi)
+        fx = f * - np.sin(theta + phi)
         fy = f * np.cos(theta + phi)
         return fx, fy
 
@@ -365,6 +365,52 @@ def _(mo):
     Give the ordinary differential equation that governs the tilt angle $\theta$.
     """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    L'équation qui gouverne l'angle d'inclinaison $\theta$ est :
+
+       $\frac{d^2\theta}{dt^2} = \frac{l \cdot f \cdot \sin(\phi)}{J}$
+
+       Étapes de résolution :
+
+    Le moment cinétique est donné par : $\tau = J \cdot \frac{d^2\theta}{dt^2}$
+
+    Le moment de force (couple) généré par le réacteur est :
+
+    Force du réacteur : $f$
+
+    Bras de levier : $l$ (distance entre le centre de masse et le réacteur)
+
+    Angle entre la force et l'axe du booster : $\phi$
+
+    La composante perpendiculaire à l'axe du booster est $f \cdot \sin(\phi)$
+
+    Le couple résultant est donc :
+    $\tau = l \cdot f \cdot \sin(\phi)$
+
+    En égalisant les deux expressions du moment :
+    $J \cdot \frac{d^2\theta}{dt^2} = l \cdot f \cdot \sin(\phi)$
+
+    D'où :
+    $\frac{d^2\theta}{dt^2} = \frac{l \cdot f \cdot \sin(\phi)}{J}$
+
+    Avec $J = \frac{M \cdot l^2}{3}$ (moment d'inertie d'une tige uniforme), on obtient :
+    $\frac{d^2\theta}{dt^2} = \frac{3 \cdot f \cdot \sin(\phi)}{M \cdot l}$
+
+    En remplaçant les valeurs $M = 1$ et $l = 1$, on obtient la formule simplifiée :$\frac{d^2\theta}{dt^2} = 3 \cdot f \cdot \sin(\phi)$
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r""" """)
     return
 
 
