@@ -832,7 +832,7 @@ def _(np, patches, plt):
     ax.grid(True, linestyle='--', alpha=0.7)
        
     plt.show()
-    return
+    return BOOSTER_L_HALF, BOOSTER_MASS
 
 
 @app.cell(hide_code=True)
@@ -858,7 +858,210 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(BOOSTER_L_HALF, BOOSTER_MASS, M, g, l, np, patches, plt):
+    from scipy.integrate import solve_ivp
+    from IPython.display import HTML, display
+    import os 
+    import matplotlib.animation as animation
+
+
+    I_booster = (1/3) * BOOSTER_MASS * l**2
+    def redstart_solve1(t_span, y0, f_phi_func, M_sim=M, g_sim=g, I_sim=I_booster, l_param_sim=l):
+        def dynamics(t, y):
+            x_dyn, dx_dyn, y_pos_dyn, dy_dyn, theta_dyn, dtheta_dyn = y
+            f_thrust_magnitude, phi_thrust_angle = f_phi_func(t, y)
+
+            sin_theta_val = np.sin(theta_dyn)
+            cos_theta_val = np.cos(theta_dyn)
+            e_theta = np.array([sin_theta_val, -cos_theta_val])
+            e_theta_perp = np.array([cos_theta_val, sin_theta_val])
+
+            f_exhaust_vec = f_thrust_magnitude * (np.cos(phi_thrust_angle) * e_theta + np.sin(phi_thrust_angle) * e_theta_perp)
+            F_thrust_on_rocket = -f_exhaust_vec
+            F_net = F_thrust_on_rocket + np.array([0.0, -M_sim * g_sim])
+
+            ddx_dyn = F_net[0] / M_sim
+            ddy_dyn = F_net[1] / M_sim
+       
+            torque = -l_param_sim * f_thrust_magnitude * np.sin(phi_thrust_angle)
+            ddtheta_dyn = torque / I_sim
+
+            return [dx_dyn, ddx_dyn, dy_dyn, ddy_dyn, dtheta_dyn, ddtheta_dyn]
+
+        sol_ivp = solve_ivp(dynamics, t_span, y0, dense_output=True, rtol=1e-7, atol=1e-9)
+
+        def sol(t):
+            t_eval = np.atleast_1d(t)
+            return sol_ivp.sol(t_eval).T
+        return sol
+
+    # === Drawing function (draw_booster_state) ===
+    # (This function remains unchanged from your provided code)
+    def draw_booster_state1(ax, x_draw, y_draw, theta_draw, f_thrust_draw, phi_gimbal_draw,
+                           booster_l_draw=BOOSTER_L_HALF, M_booster_draw=BOOSTER_MASS, g_gravity_draw=g):
+        artists = []
+        BOOSTER_WIDTH = booster_l_draw * 0.4
+        FLAME_BASE_WIDTH = BOOSTER_WIDTH * 0.85
+        MIN_THRUST_FOR_FLAME = 1e-3
+        MAX_VISUAL_FLAME_LENGTH = booster_l_draw * 4.0
+
+        u_axis_CoM_to_Nose = np.array([-np.sin(theta_draw), np.cos(theta_draw)])
+        u_perp_CoM_to_Right = np.array([np.cos(theta_draw), np.sin(theta_draw)])
+
+        C1 = (np.array([x_draw, y_draw]) + booster_l_draw * u_axis_CoM_to_Nose + (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+        C2 = (np.array([x_draw, y_draw]) + booster_l_draw * u_axis_CoM_to_Nose - (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+        C3 = (np.array([x_draw, y_draw]) - booster_l_draw * u_axis_CoM_to_Nose - (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+        C4 = (np.array([x_draw, y_draw]) - booster_l_draw * u_axis_CoM_to_Nose + (BOOSTER_WIDTH / 2) * u_perp_CoM_to_Right)
+   
+        booster_patch = patches.Polygon([C1, C2, C3, C4], closed=True, fc='slategrey', ec='black', zorder=10)
+        ax.add_patch(booster_patch)
+        artists.append(booster_patch)
+
+        if f_thrust_draw > MIN_THRUST_FOR_FLAME: # Only draw flame if thrust is positive
+            P_base_center = np.array([x_draw, y_draw]) - booster_l_draw * u_axis_CoM_to_Nose
+            e_theta_CoM_to_base = np.array([np.sin(theta_draw), -np.cos(theta_draw)])
+            e_theta_perp_CCW = np.array([np.cos(theta_draw), np.sin(theta_draw)])
+            u_flame_axis = (np.cos(phi_gimbal_draw) * e_theta_CoM_to_base + np.sin(phi_gimbal_draw) * e_theta_perp_CCW)
+       
+            norm_flame_axis = np.linalg.norm(u_flame_axis)
+            if norm_flame_axis > 1e-6: u_flame_axis /= norm_flame_axis
+       
+            if M_booster_draw > 1e-6 and g_gravity_draw > 1e-6:
+                flame_L = (booster_l_draw / (M_booster_draw * g_gravity_draw)) * f_thrust_draw
+            else:
+                flame_L = booster_l_draw * (f_thrust_draw / (1.0 if M_booster_draw < 1e-6 else M_booster_draw))
+       
+            flame_L = np.clip(flame_L, 0, MAX_VISUAL_FLAME_LENGTH)
+       
+            u_flame_perp = np.array([-u_flame_axis[1], u_flame_axis[0]])
+            P_flame_Apex = P_base_center + flame_L * u_flame_axis
+            P_flame_BaseLeft = P_base_center - (FLAME_BASE_WIDTH / 2) * u_flame_perp
+            P_flame_BaseRight = P_base_center + (FLAME_BASE_WIDTH / 2) * u_flame_perp
+       
+            flame_patch = patches.Polygon([P_flame_BaseLeft, P_flame_BaseRight, P_flame_Apex],
+                                          closed=True, fc='orangered', ec='none', alpha=0.75, zorder=5)
+            ax.add_patch(flame_patch)
+            artists.append(flame_patch)
+   
+        return artists
+
+    # === Generic Animation Function ===
+    def create_simulation_video(scenario_name, y0_anim, f_phi_controller_func,
+                                t_duration=5.0, fps=25, video_filename_base="simulation"):
+        print(f"Generating animation for: {scenario_name}")
+   
+        t_span_anim = [0.0, t_duration]
+        sol_function = redstart_solve1(t_span_anim, y0_anim, f_phi_controller_func)
+
+        num_frames = int(t_duration * fps)
+        t_frames = np.linspace(t_span_anim[0], t_span_anim[1], num_frames)
+   
+        sim_states = sol_function(t_frames)
+        sim_controls = np.array([f_phi_controller_func(t, sim_states[i,:]) for i, t in enumerate(t_frames)])
+
+        fig, ax = plt.subplots(figsize=(8, 8)) # Square aspect ratio often good for general motion
+   
+        # Dynamic plot limits based on trajectory
+        all_x_coords = sim_states[:, 0]
+        all_y_coords = sim_states[:, 2]
+        x_min = min(all_x_coords.min(), -1*BOOSTER_L_HALF) - 2*BOOSTER_L_HALF
+        x_max = max(all_x_coords.max(), 1*BOOSTER_L_HALF) + 2*BOOSTER_L_HALF
+        y_min = min(all_y_coords.min(), -1*BOOSTER_L_HALF) - 1*BOOSTER_L_HALF
+        y_max = max(all_y_coords.max(), y0_anim[2] + 1*BOOSTER_L_HALF) # Ensure initial height is visible
+   
+        # Ensure a minimum view range if motion is small
+        if (x_max - x_min) < 5 * BOOSTER_L_HALF:
+            mid_x = (x_max + x_min) / 2
+            x_min = mid_x - 2.5 * BOOSTER_L_HALF
+            x_max = mid_x + 2.5 * BOOSTER_L_HALF
+        if (y_max - y_min) < 12 * BOOSTER_L_HALF: # To accommodate initial y=10
+            mid_y = (y_max + y_min) / 2
+            y_min = mid_y - 6 * BOOSTER_L_HALF
+            y_max = mid_y + 6 * BOOSTER_L_HALF
+
+
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_aspect('equal', adjustable='box')
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.set_xlabel("x position (m)")
+        ax.set_ylabel("y position (m)")
+        ax.set_title(f"Booster Simulation: {scenario_name}")
+
+        ground_line = ax.axhline(0, color='darkgreen', linewidth=2, zorder=1, label="Ground (y=0)")
+        # Target marker at (0,0) for general scenarios
+        target_marker = ax.plot(0, 0, 'X', color='red', markersize=12, markeredgewidth=1.5, zorder=2, label="Origin (0,0)")[0]
+        time_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, fontsize=9, va='top',
+                            bbox=dict(boxstyle='round,pad=0.3', fc='wheat', alpha=0.8))
+        path_x, path_y = [], []
+        path_line, = ax.plot([], [], 'c--', lw=1.5, alpha=0.6, label="Trajectory")
+        ax.legend(loc='lower left', fontsize='small')
+
+        dynamic_artists = []
+
+        def animate_frame(i):
+            nonlocal dynamic_artists, path_x, path_y
+            for artist in dynamic_artists: artist.remove()
+            dynamic_artists = []
+
+            current_state_frame = sim_states[i, :]
+            x_sim, _, y_sim, dy_sim, theta_sim, dtheta_sim = current_state_frame
+            f_sim, phi_sim = sim_controls[i, :]
+
+            path_x.append(x_sim)
+            path_y.append(y_sim)
+            if len(path_x) > 200: # Limit path trace length
+                 path_x.pop(0); path_y.pop(0)
+            path_line.set_data(path_x, path_y)
+       
+            new_artists = draw_booster_state1(ax, x_sim, y_sim, theta_sim, f_sim, phi_sim)
+            dynamic_artists.extend(new_artists)
+       
+            time_text.set_text(f"Time: {t_frames[i]:.2f}s\ny={y_sim:.2f}m, dy={dy_sim:.2f}m/s\nθ={np.rad2deg(theta_sim):.1f}°, dθ={np.rad2deg(dtheta_sim):.1f}°/s\nF={f_sim:.2f}N, φ={np.rad2deg(phi_sim):.1f}°")
+       
+            return dynamic_artists + [time_text, path_line]
+
+        ani = animation.FuncAnimation(fig, animate_frame, frames=num_frames, interval=1000/fps, blit=False)
+
+        video_dir = "videos"
+        if not os.path.exists(video_dir): os.makedirs(video_dir)
+        video_filename = f"{video_filename_base}_{scenario_name.lower().replace(' ', '_').replace('=', '').replace('/', 'div')}.mp4"
+        full_video_path = os.path.join(video_dir, video_filename)
+
+        try:
+            ani.save(full_video_path, writer='ffmpeg', fps=fps, dpi=100) # Lower DPI for faster generation
+            print(f"Animation saved as {full_video_path}")
+            plt.close(fig)
+            return HTML(f"""<video width="480" height="480" controls autoplay loop><source src="{full_video_path}" type="video/mp4">Your browser does not support the video tag.</video>""")
+        except Exception as e:
+            print(f"Error saving or displaying animation for {scenario_name}: {e}")
+            plt.close(fig)
+            return None
+
+    # --- Define Scenarios and Run Animations ---
+    if __name__ == "__main__":
+        # Initial state for all three scenarios
+        y0_common = [0.0, 0.0, 10.0, 0.0, 0.0, 0.0]
+        simulation_duration = 5.0
+
+        # Scenario 1: Free Fall (f=0, phi=0)
+        def f_phi_s1(t, y_state):
+            return np.array([0.0, 0.0])
+        video_s1 = create_simulation_video("Free_Fall_f0_phi0", y0_common, f_phi_s1, t_duration=simulation_duration)
+        if video_s1: display(video_s1)
+
+        # Scenario 2: Hover (f=Mg, phi=0)
+        def f_phi_s2(t, y_state):
+            return np.array([M * g, 0.0])
+        video_s2 = create_simulation_video("Hover_fMg_phi0", y0_common, f_phi_s2, t_duration=simulation_duration)
+        if video_s2: display(video_s2)
+
+        # Scenario 3: Gimbaled Hover (f=Mg, phi=pi/8)
+        def f_phi_s3(t, y_state):
+            return np.array([M * g, np.pi/8])
+        video_s3 = create_simulation_video("Gimbaled_Hover_fMg_phipi_div_8", y0_common, f_phi_s3, t_duration=simulation_duration)
+        if video_s3: display(video_s3)
+
     return
 
 
