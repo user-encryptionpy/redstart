@@ -1018,7 +1018,6 @@ def _(mo):
         \theta = 0, \quad \phi = 0, \quad f = Mg, \quad \dot{x} = \dot{y} = \dot{\theta} = 0
         $$
 
-        La position $(x, y)$ est libre tant que $y \geq \ell$.
     """
     )
     return
@@ -1220,7 +1219,7 @@ def _(J, M, g, l, np):
         [0, -l*M*g/J]
     ])
 
-    return
+    return A, B
 
 
 @app.cell(hide_code=True)
@@ -1230,6 +1229,51 @@ def _(mo):
     ## 🧩 Stability
 
     Is the generic equilibrium asymptotically stable?
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""To determine stability, we examine the eigenvalues of A:""")
+    return
+
+
+@app.cell
+def _(A, np):
+    eigenvalues = np.linalg.eigvals(A)
+    print("Eigenvalues:", eigenvalues)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    Les valeurs propres de la matrice $A$ sont :
+
+    $$
+    \lambda =
+    \begin{bmatrix}
+    0 & 0 & 0 & 0 & 0 & 0
+    \end{bmatrix}
+    $$
+
+        Toutes les valeurs propres sont nulles, c’est-à-dire **situées sur l’axe imaginaire** (en fait à l’origine). Cela implique :
+
+        - Les valeurs propres **ne sont pas strictement dans le demi-plan gauche** du plan complexe.
+        - Le système **n’est pas asymptotiquement stable**.
+        - Le système est **au mieux marginalement stable**.
+    
+
+        À l’équilibre, si la fusée n’est **pas perturbée**, elle y reste. En revanche :
+
+        - Une **petite perturbation** ne ramène pas la fusée à l’équilibre.
+        - Elle aura tendance à **dériver**.
+        - Cela est dû à la présence de **double intégrateurs** dans la dynamique.
+
+        Donc, le système **n’a pas de dynamique de rappel** pour revenir à l’équilibre après une perturbation.
     """
     )
     return
@@ -1247,6 +1291,38 @@ def _(mo):
     return
 
 
+@app.cell
+def _(A, B, np):
+    def compute_controllability_matrix(A, B):
+        n = A.shape[0]  
+        m = B.shape[1]  
+        C = np.zeros((n, n*m))
+    
+        A_power = np.eye(n)
+        for i in range(n):
+            C[:, i*m:(i+1)*m] = A_power @ B
+            A_power = A_power @ A
+        
+        return C
+
+    C = compute_controllability_matrix(A, B)
+    rank_C = np.linalg.matrix_rank(C)
+    print(f"Rank of controllability matrix: {rank_C}")
+    print(f"System is {'controllable' if rank_C == A.shape[0] else 'not controllable'}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    Le rang de la matrice de contrôlabilité est égal à 6, ce qui correspond à la dimension du système.
+    Par conséquent, le système est contrôlable.
+    """
+    )
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -1259,6 +1335,12 @@ def _(mo):
     Check the controllability of this new system.
     """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r""" """)
     return
 
 
