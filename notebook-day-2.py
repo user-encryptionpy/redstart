@@ -1419,7 +1419,7 @@ def _(J, M, compute_controllability_matrix, g, l, np):
     rank_C_reduced = np.linalg.matrix_rank(C_reduced)
     print(f"Rank of reduced controllability matrix: {rank_C_reduced}")
     print(f"Reduced system is {'controllable' if rank_C_reduced == A_reduced.shape[0] else 'not controllable'}")
-    return (A_reduced,)
+    return A_reduced, B_reduced
 
 
 @app.cell(hide_code=True)
@@ -1465,75 +1465,61 @@ def _(mo):
 
 
 @app.cell
-def _(A_reduced, np, plt):
+def _(A_reduced, B_reduced, np, plt):
     from scipy.integrate import solve_ivp
 
-    delta_x0 = 0.0
-    delta_v_x0 = 0.0
-    delta_theta0 = (45/180) * np.pi
-    delta_omega_theta0 = 0.0
+    def linear_model_dynamics(t, state, A_reduced, B_reduced, u):
+        return A_reduced @ state + B_reduced @ u
 
-    initial_conditions_reduced = np.array([delta_x0, delta_v_x0, delta_theta0, delta_omega_theta0])
+    x0 = np.array([0.0, 0.0, np.pi/4, 0.0])
+    t_span = [0, 5]
+    # Time span
+    t_eval = np.linspace(t_span[0], t_span[1], 1000)
 
-
-    t_start = 0.0
-    t_end = 5.0
-    t_eval = np.linspace(t_start, t_end, 500)
-
-    def linearized_system_reduced(t, delta_X_reduced):
-        return A_reduced @ delta_X_reduced
-
-    sol_reduced = solve_ivp(linearized_system_reduced, [t_start, t_end], initial_conditions_reduced,
-                            dense_output=True, t_eval=t_eval)
+    # Control input (zero for free fall)
+    u = np.array([0.0])
 
 
-    delta_theta_t_sim = sol_reduced.y[2, :]
-    theta_t_sim = delta_theta_t_sim
+    # Solve ODE
+    sol = solve_ivp(
+        lambda t, x: linear_model_dynamics(t, x, A_reduced, B_reduced, u),
+        t_span, x0, t_eval=t_eval
+    )
 
-    y_eq_assumed = 10.0
-    y_t_sim = np.full_like(t_eval, y_eq_assumed)
+    # Plot results
+    plt.figure(figsize=(12, 8))
 
-    theta_t_analytical = np.full_like(t_eval, delta_theta0)
-
-    plt.figure(figsize=(12, 6))
-
-    plt.subplot(1, 2, 1)
-    plt.plot(t_eval, y_t_sim, label=r'$y(t)$ (linearized model, assuming $y_{eq}$)')
-    plt.title(r'Plot of $y(t)$ for Linearized Model ($\Delta f=0, \Delta\dot{y}(0)=0$)')
-    plt.xlabel('Time (s)')
-    plt.ylabel(r'$y(t)$ (m)')
-    plt.ylim(y_eq_assumed - 1, y_eq_assumed + 1) # Adjust if needed
+    plt.subplot(2, 1, 1)
+    plt.plot(sol.t, sol.y[0], label='Δx(t)')
     plt.grid(True)
     plt.legend()
+    plt.title('Position vs Time')
 
-    plt.subplot(1, 2, 2)
-    plt.plot(t_eval, theta_t_sim, label=r'$\theta(t)$ (linearized model)')
-    plt.plot(t_eval, theta_t_analytical, 'r--', label=r'$\theta(t)$ (analytical from derivation)')
-    plt.title(r'Plot of $\theta(t)$ for Linearized Model ($\Delta\phi=0$)')
-    plt.xlabel('Time (s)')
-    plt.ylabel(r'$\theta(t)$ (radians)')
-    plt.ylim(delta_theta0 - 0.1, delta_theta0 + 0.1) # Zoom around constant value
-    plt.axhline(delta_theta0, color='gray', linestyle=':', label=fr'$\theta(0) = \pi/4$')
+    plt.subplot(2, 1, 2)
+    plt.plot(sol.t, sol.y[2], label='Δθ(t)')
     plt.grid(True)
     plt.legend()
+    plt.title('Angle vs Time')
 
     plt.tight_layout()
     plt.show()
 
-    return
+
+    return solve_ivp, t_eval, t_span, x0
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
-    ### Analyse des résultats
 
     Pour le modèle linéarisé en chute libre avec une inclinaison initiale de 45° :
 
-    - La position angulaire \( \theta \) reste constante à 45°, car aucun couple n'agit sur le lanceur lorsque \( \phi = 0 \).
-    - \( y \) est constante parcequ'on travail dans l'équilibre, \( y = y_e \).
-    - Cela a du sens physiquement : en l'absence de commande et avec une inclinaison initiale, la fusée continue de tomber suivant cet angle sans changer d’orientation.
+    - La position angulaire \( \theta \) reste constante, car aucun couple n'agit sur le lanceur lorsque \( \phi = 0 \).
+
+    - La position \( x \) diminue de manière quadratique dans le temps.
+
+    - Cela a du sens physiquement : en l'absence de commande et avec une inclinaison initiale, la fusée continue à s'accélèrer horizentalement, sans aucune rotation.
 
     """
     )
@@ -1582,6 +1568,93 @@ def _(mo):
     Is your closed-loop model asymptotically stable?
     """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    Nous cherchons à déterminer les coefficients du vecteur \( K \) :
+
+    \[
+    K = [0,\, 0,\, k_3,\, k_4]
+    \]
+
+    tels que :
+
+    - \( \Delta \theta(t) \rightarrow 0 \) en environ 20 secondes ou moins
+    - \( |\Delta \theta(t)| < \frac{\pi}{2} \) et \( |\Delta \phi(t)| < \frac{\pi}{2} \) en tout temps
+
+    En utilisant la relation triuvée précédemment
+
+    \[
+    \Delta \ddot{\theta} = -\frac{\ell M g}{J} \cdot \Delta \phi
+    \]
+
+    Avec la relation\( \Delta \phi = -K \cdot X \), on obtient :
+
+    \[
+    \Delta \ddot{\theta} = \frac{\ell M g}{J} \cdot k_3 \cdot \Delta \theta + \frac{\ell M g}{J} \cdot k_4 \cdot \Delta \dot{\theta}
+    \]
+
+    en faisant des itérations, on trouve : \( k_3 = -0.25 \)   et \( k_4 = -0.4\) 
+    """
+    )
+    return
+
+
+@app.cell
+def _(A_reduced, B_reduced, np, plt, solve_ivp, t_eval, t_span, x0):
+    def simulate_controlled_system(K, A_reduced, B_reduced, x0, t_span, t_eval):
+        def dynamics(t, state):
+            state_col = state.reshape(-1, 1)
+        
+            u = -K @ state
+            u = np.array([[u]])  
+            state_dot = A_reduced @ state_col + B_reduced @ u
+            return state_dot.flatten()
+    
+        sol = solve_ivp(dynamics, t_span, x0, t_eval=t_eval)
+        return sol
+
+    k3 = -0.25
+    k4 = -0.4
+    K = np.array([0, 0, k3, k4])
+
+
+    sol_controlled = simulate_controlled_system(
+        K, A_reduced, B_reduced, x0, t_span, t_eval
+    )
+
+
+    plt.figure(figsize=(12, 10))
+
+
+    plt.subplot(3, 1, 1)
+    plt.plot(sol_controlled.t, sol_controlled.y[2], label='Δθ(t)')
+    plt.axhline(y=0, color='r', linestyle='--', alpha=0.3)
+    plt.axhline(y=np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.axhline(y=-np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.grid(True)
+    plt.legend()
+    plt.title('Angle vs Time')
+    plt.ylabel('Angle (rad)')
+
+    plt.subplot(3, 1, 2)
+    control_input = np.array([-K @ sol_controlled.y[:, i] for i in range(len(sol_controlled.t))])
+    plt.plot(sol_controlled.t, control_input, label='Δφ(t)')
+    plt.axhline(y=np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.axhline(y=-np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.grid(True)
+    plt.legend()
+    plt.title('Control Input vs Time')
+    plt.ylabel('Control Input (rad)')
+
+
+    plt.tight_layout()
+    plt.show()
+
     return
 
 
