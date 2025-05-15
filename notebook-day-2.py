@@ -1801,6 +1801,123 @@ def _(mo):
     return
 
 
+@app.cell
+def _(A_reduced, B_reduced, np, plt, solve_ivp):
+    from scipy import linalg
+    from scipy.linalg import solve_continuous_are
+    from IPython.display import HTML, display
+    import os
+
+    Q = np.diag([3.0, 1.0, 20.0, 1.0]) 
+    R_scalar = 5.0                     
+
+    try:
+        P = solve_continuous_are(A_reduced, B_reduced, Q, R_scalar)
+        K_oc_lqr = np.linalg.inv(np.array([[R_scalar]])) @ B_reduced.T @ P
+        print(f"Matrice de gain LQR K_oc = {K_oc_lqr}")
+        k_x_lqr, k_vx_lqr, k_theta_lqr, k_omega_lqr = K_oc_lqr.flatten()
+        print(f"  k_x_lqr = {k_x_lqr:.4f}")
+        print(f"  k_vx_lqr = {k_vx_lqr:.4f}")
+        print(f"  k_theta_lqr = {k_theta_lqr:.4f}")
+        print(f"  k_omega_lqr = {k_omega_lqr:.4f}")
+
+    except np.linalg.LinAlgError as e:
+        print(f"La résolution LQR a échoué : {e}")
+        K_oc_lqr = np.array([[0,0,0,0]]) 
+        k_x_lqr, k_vx_lqr, k_theta_lqr, k_omega_lqr = K_oc_lqr.flatten()
+
+
+    A_bf_lqr = A_reduced - B_reduced @ K_oc_lqr 
+
+    val_propres_bf_lqr, _ = np.linalg.eig(A_bf_lqr)
+    print(f"\nValeurs propres du système LQR en boucle fermée : {np.sort(val_propres_bf_lqr)}")
+
+    dx0 = 0.0
+    dvx0 = 0.0
+    dtheta0 = (45/180) * np.pi
+    domega0 = 0.0
+    CI = np.array([dx0, dvx0, dtheta0, domega0])
+
+    t_debut = 0.0
+    t_fin = 30.0
+    temps_eval = np.linspace(t_debut, t_fin, 1000)
+
+    def systeme_boucle_fermee_lqr(t, dX_actuel, A_bf_matrice_lqr):
+        return A_bf_matrice_lqr @ dX_actuel
+
+    solution_bf_lqr = solve_ivp(systeme_boucle_fermee_lqr, [t_debut, t_fin], CI,
+                                args=(A_bf_lqr,), dense_output=True, t_eval=temps_eval)
+
+    dX_t_lqr = solution_bf_lqr.y
+    dx_t_lqr = dX_t_lqr[0, :]
+    dvx_t_lqr = dX_t_lqr[1,:]
+    dtheta_t_lqr = dX_t_lqr[2, :]
+    domega_t_lqr = dX_t_lqr[3, :]
+    dphi_t_lqr = - (K_oc_lqr @ dX_t_lqr).flatten()
+
+    plt.figure(figsize=(18, 10))
+    plt.suptitle("Contrôle Optimal LQR", fontsize=16)
+
+    plt.subplot(2, 2, 1)
+    plt.plot(temps_eval, dtheta_t_lqr, label=r'$\Delta\theta(t)$ (LQR)')
+    plt.axhline(0, color='black', linestyle='--', lw=0.8)
+    plt.axhline(0.02 * dtheta0, color='gray', linestyle=':', label=r'2% de $\Delta\theta(0)$')
+    plt.title(r'Erreur d\'Angle $\Delta\theta(t)$')
+    plt.xlabel('Temps (s)'); plt.ylabel(r'$\Delta\theta(t)$ (radians)'); plt.grid(True); plt.legend()
+
+    plt.subplot(2, 2, 2)
+    plt.plot(temps_eval, dphi_t_lqr, label=r'$\Delta\phi(t)$ (LQR)')
+    plt.axhline(np.pi/2, color='red', linestyle='--', label=r'$|\Delta\phi|_{max} = \pi/2$')
+    plt.axhline(-np.pi/2, color='red', linestyle='--')
+    plt.title(r'Commande d\'Entrée $\Delta\phi(t)$')
+    plt.xlabel('Temps (s)'); plt.ylabel(r'$\Delta\phi(t)$ (radians)'); plt.grid(True); plt.legend()
+
+    plt.subplot(2, 2, 3)
+    plt.plot(temps_eval, dx_t_lqr, label=r'$\Delta x(t)$ (LQR)')
+    plt.axhline(0, color='black', linestyle='--', lw=0.8)
+    plt.title(r'Erreur de Position $\Delta x(t)$')
+    plt.xlabel('Temps (s)'); plt.ylabel(r'$\Delta x(t)$ (m)'); plt.grid(True); plt.legend()
+
+    plt.subplot(2, 2, 4)
+    plt.plot(temps_eval, dvx_t_lqr, label=r'$\Delta \dot{x}(t)$ (LQR)')
+    plt.axhline(0, color='black', linestyle='--', lw=0.8)
+    plt.title(r'Erreur de Vitesse $\Delta \dot{x}(t)$')
+    plt.xlabel('Temps (s)'); plt.ylabel(r'$\Delta \dot{x}(t)$ (m/s)'); plt.grid(True); plt.legend()
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
+
+    indices_stab_theta_lqr = np.where(np.abs(dtheta_t_lqr) < 0.02 * np.abs(dtheta0))[0]
+    temps_stab_theta_lqr = temps_eval[indices_stab_theta_lqr[0]] if len(indices_stab_theta_lqr) > 0 else t_fin
+    print(f"\nLQR : Temps de stabilisation pour Δθ (à 2%) approx : {temps_stab_theta_lqr:.2f} s")
+
+    pic_abs_dx_lqr = np.max(np.abs(dx_t_lqr))
+    idx_pic_dx_lqr = np.argmax(np.abs(dx_t_lqr))
+    seuil_dx = 0.01
+    indices_stab_dx_lqr = np.where(np.abs(dx_t_lqr[idx_pic_dx_lqr:]) < seuil_dx)[0]
+    temps_stab_dx_lqr = temps_eval[idx_pic_dx_lqr + indices_stab_dx_lqr[0]] if len(indices_stab_dx_lqr) > 0 else t_fin
+    print(f"LQR : Temps approx. pour Δx de revenir proche de 0 (seuil {seuil_dx}m) : {temps_stab_dx_lqr:.2f} s (Pic |Δx| : {pic_abs_dx_lqr:.3f}m)")
+
+    print(f"LQR : Max |Δϕ(t)| : {np.max(np.abs(dphi_t_lqr)):.3f} rad (Limite : {np.pi/2:.3f} rad)")
+    print(f"LQR : Max |Δθ(t)| : {np.max(np.abs(dtheta_t_lqr)):.3f} rad (Limite : {np.pi/2:.3f} rad)") # Devrait être dtheta0
+
+    return (solve_continuous_are,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    **Pour la question sur la Commande Optimale LQR (trouver `K_oc`) :**
+
+    1.  Nous avons aussi utilisé le modèle linéarisé réduit (`A_reduced`, `B_reduced`).
+    2.  Nous avons défini une fonction de coût pénalisant les erreurs sur `Δx` et `Δθ` (via la matrice `Q`) et l'effort de commande `Δϕ` (via `R`).
+    3.  L'algorithme LQR a trouvé la matrice de gains `K_oc` qui minimise cette fonction de coût, assurant une stabilisation efficace (<20s) et stable tout en équilibrant performance et usage de la commande
+    """
+    )
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -1808,6 +1925,191 @@ def _(mo):
     ## 🧩 Validation
 
     Test the two control strategies (pole placement and optimal control) on the "true" (nonlinear) model and check that they achieve their goal. Otherwise, go back to the drawing board and tweak the design parameters until they do!
+    """
+    )
+    return
+
+
+@app.cell
+def _(J, M, g, l, np, plt, solve_continuous_are, solve_ivp):
+    from scipy.signal import place_poles
+    I = J
+    c = (l * M * g) / I
+
+    def redstart_solve_nonlinear(t_span, y0_nl, f_phi_controller_nl_func):
+        def dynamics_nl(t, y_nl_current):
+            x_nl, vx_nl, y_nl, vy_nl, theta_nl, omega_nl = y_nl_current
+       
+            # Obtenir f et phi du contrôleur
+            f_thrust_nl, phi_gimbal_nl = f_phi_controller_nl_func(t, y_nl_current)
+
+            sin_theta_nl = np.sin(theta_nl)
+            cos_theta_nl = np.cos(theta_nl)
+            e_theta_nl = np.array([sin_theta_nl, -cos_theta_nl])
+            e_theta_perp_nl = np.array([cos_theta_nl, sin_theta_nl])
+
+            f_exhaust_vec_nl = f_thrust_nl * (np.cos(phi_gimbal_nl) * e_theta_nl + np.sin(phi_gimbal_nl) * e_theta_perp_nl)
+            F_thrust_on_rocket_nl = -f_exhaust_vec_nl
+            F_net_nl = F_thrust_on_rocket_nl + np.array([0.0, -M * g])
+
+            ddx_nl = F_net_nl[0] / M
+            ddy_nl = F_net_nl[1] / M
+       
+            torque_nl = -l * f_thrust_nl * np.sin(phi_gimbal_nl)
+            ddtheta_nl = torque_nl / I
+
+            return [vx_nl, ddx_nl, vy_nl, ddy_nl, omega_nl, ddtheta_nl]
+
+        sol_ivp_nl = solve_ivp(dynamics_nl, t_span, y0_nl, dense_output=True, rtol=1e-7, atol=1e-9)
+
+        def sol_nl(t):
+            t_eval_nl = np.atleast_1d(t)
+            return sol_ivp_nl.sol(t_eval_nl).T
+        return sol_nl
+
+
+    # Pole Placement (avec omega_c_poles = 0.7)
+    A_matrix_pp = np.array([ [0,1,0,0], [0,0,-g,0], [0,0,0,1], [0,0,0,0] ])
+    B_col_pp = np.array([ [0],[-g],[0],[-c] ])
+    omega_c_pp = 0.7
+    p1_pp = omega_c_pp * (-0.3827 + 1j * 0.9239)
+    p2_pp = omega_c_pp * (-0.9239 + 1j * 0.3827)
+    poles_desires_pp = np.array([p1_pp, np.conj(p1_pp), p2_pp, np.conj(p2_pp)])
+    K_pole_placement = place_poles(A_matrix_pp, B_col_pp, poles_desires_pp).gain_matrix
+    print(f"K_pole_placement = {K_pole_placement.flatten()}")
+
+    # LQR
+    Q_lqr = np.diag([3.0, 1.0, 20.0, 1.0])
+    R_lqr_scalar = 5.0
+    P_lqr = solve_continuous_are(A_matrix_pp, B_col_pp, Q_lqr, R_lqr_scalar)
+    K_lqr = np.linalg.inv(np.array([[R_lqr_scalar]])) @ B_col_pp.T @ P_lqr
+    print(f"K_lqr = {K_lqr.flatten()}")
+
+    x0_nl = 0.0
+    vx0_nl = 0.0
+    y0_nl = 10.0 # Hauteur initiale
+    vy0_nl = 0.0
+    theta0_nl = (45/180) * np.pi # Inclinaison initiale de 45 degrés
+    omega0_nl = 0.0
+    CI_non_lineaire = np.array([x0_nl, vx0_nl, y0_nl, vy0_nl, theta0_nl, omega0_nl])
+
+    def f_phi_pp_controller(t, etat_actuel_nl, K_gain_pp):
+        x_nl, vx_nl, _, _, theta_nl, omega_nl = etat_actuel_nl
+   
+        delta_x = x_nl
+        delta_vx = vx_nl
+        delta_theta = theta_nl
+        delta_omega = omega_nl
+   
+        dX_red_actuel = np.array([delta_x, delta_vx, delta_theta, delta_omega])
+   
+        delta_phi_commande = - (K_gain_pp @ dX_red_actuel).item() # .item() si K_gain_pp est 1xN
+
+        f_poussee_nl = M * g
+        phi_gimbal_nl = delta_phi_commande
+   
+        return np.array([f_poussee_nl, phi_gimbal_nl])
+
+    # --- Fonction de contrôleur pour LQR (utilisant K_lqr) ---
+    def f_phi_lqr_controller(t, etat_actuel_nl, K_gain_lqr):
+        x_nl, vx_nl, _, _, theta_nl, omega_nl = etat_actuel_nl
+        delta_x = x_nl
+        delta_vx = vx_nl
+        delta_theta = theta_nl
+        delta_omega = omega_nl
+        dX_red_actuel = np.array([delta_x, delta_vx, delta_theta, delta_omega])
+        delta_phi_commande = - (K_gain_lqr @ dX_red_actuel).item()
+        f_poussee_nl = M * g
+        phi_gimbal_nl = delta_phi_commande
+        return np.array([f_poussee_nl, phi_gimbal_nl])
+
+
+    # --- Simulation et Tracé ---
+    t_debut_nl = 0.0
+    t_fin_nl = 30.0
+    temps_eval_nl = np.linspace(t_debut_nl, t_fin_nl, 1000)
+
+    # 1. Test Pole Placement sur modèle non linéaire
+    sol_nl_pp_func = redstart_solve_nonlinear(
+        [t_debut_nl, t_fin_nl],
+        CI_non_lineaire,
+        lambda t, y_nl: f_phi_pp_controller(t, y_nl, K_pole_placement)
+    )
+    resultats_nl_pp = sol_nl_pp_func(temps_eval_nl)
+    phi_commande_nl_pp = np.array([f_phi_pp_controller(t, resultats_nl_pp[i,:], K_pole_placement)[1] for i, t in enumerate(temps_eval_nl)])
+
+    # 2. Test LQR sur modèle non linéaire
+    sol_nl_lqr_func = redstart_solve_nonlinear(
+        [t_debut_nl, t_fin_nl],
+        CI_non_lineaire,
+        lambda t, y_nl: f_phi_lqr_controller(t, y_nl, K_lqr)
+    )
+    resultats_nl_lqr = sol_nl_lqr_func(temps_eval_nl)
+    phi_commande_nl_lqr = np.array([f_phi_lqr_controller(t, resultats_nl_lqr[i,:], K_lqr)[1] for i, t in enumerate(temps_eval_nl)])
+
+
+    # Tracés comparatifs
+    fig, axs = plt.subplots(3, 2, figsize=(18, 15), sharex=True)
+    plt.suptitle("Test des Contrôleurs sur Modèle Non Linéaire", fontsize=18)
+
+    # θ(t)
+    axs[0,0].plot(temps_eval_nl, resultats_nl_pp[:,4], label='Pole Placement')
+    axs[0,0].plot(temps_eval_nl, resultats_nl_lqr[:,4], label='LQR', linestyle='--')
+    axs[0,0].axhline(0, color='k', lw=0.8, ls=':')
+    axs[0,0].axhline(0.02 * theta0_nl, color='gray', linestyle=':', label='2% de $\theta(0)$')
+    axs[0,0].set_title(r'Angle $\theta(t)$ (Non Linéaire)')
+    axs[0,0].set_ylabel(r'$\theta(t)$ (rad)'); axs[0,0].grid(True); axs[0,0].legend()
+
+    # ϕ(t)
+    axs[0,1].plot(temps_eval_nl, phi_commande_nl_pp, label='Pole Placement')
+    axs[0,1].plot(temps_eval_nl, phi_commande_nl_lqr, label='LQR', linestyle='--')
+    axs[0,1].axhline(np.pi/2, color='r', lw=0.8, ls='--', label=r'$|\phi|_{max}=\pi/2$')
+    axs[0,1].axhline(-np.pi/2, color='r', lw=0.8, ls='--')
+    axs[0,1].set_title(r'Commande Cardan $\phi(t)$ (Non Linéaire)')
+    axs[0,1].set_ylabel(r'$\phi(t)$ (rad)'); axs[0,1].grid(True); axs[0,1].legend()
+
+    # x(t)
+    axs[1,0].plot(temps_eval_nl, resultats_nl_pp[:,0], label='Pole Placement')
+    axs[1,0].plot(temps_eval_nl, resultats_nl_lqr[:,0], label='LQR', linestyle='--')
+    axs[1,0].axhline(0, color='k', lw=0.8, ls=':')
+    axs[1,0].set_title(r'Position Horizontale $x(t)$ (Non Linéaire)')
+    axs[1,0].set_ylabel(r'$x(t)$ (m)'); axs[1,0].grid(True); axs[1,0].legend()
+
+    # y(t) - Juste pour voir ce qu'il advient de y
+    axs[1,1].plot(temps_eval_nl, resultats_nl_pp[:,2], label='Pole Placement')
+    axs[1,1].plot(temps_eval_nl, resultats_nl_lqr[:,2], label='LQR', linestyle='--')
+    axs[1,1].axhline(l, color='g', lw=0.8, ls='--', label='Hauteur $y=l$ (cible du controlled landing)')
+    axs[1,1].set_title(r'Position Verticale $y(t)$ (Non Linéaire)')
+    axs[1,1].set_ylabel(r'$y(t)$ (m)'); axs[1,1].grid(True); axs[1,1].legend()
+
+    # vx(t) et omega_theta(t)
+    axs[2,0].plot(temps_eval_nl, resultats_nl_pp[:,1], label=r'Pole Placement $\dot{x}$')
+    axs[2,0].plot(temps_eval_nl, resultats_nl_lqr[:,1], label=r'LQR $\dot{x}$', linestyle='--')
+    axs[2,0].axhline(0, color='k', lw=0.8, ls=':')
+    axs[2,0].set_title(r'Vitesse Horizontale $\dot{x}(t)$ (Non Linéaire)')
+    axs[2,0].set_ylabel(r'$\dot{x}(t)$ (m/s)'); axs[2,0].grid(True); axs[2,0].legend()
+
+    axs[2,1].plot(temps_eval_nl, resultats_nl_pp[:,5], label=r'Pole Placement $\dot{\theta}$')
+    axs[2,1].plot(temps_eval_nl, resultats_nl_lqr[:,5], label=r'LQR $\dot{\theta}$', linestyle='--')
+    axs[2,1].axhline(0, color='k', lw=0.8, ls=':')
+    axs[2,1].set_title(r'Vitesse Angulaire $\dot{\theta}(t)$ (Non Linéaire)')
+    axs[2,1].set_ylabel(r'$\dot{\theta}(t)$ (rad/s)'); axs[2,1].grid(True); axs[2,1].legend()
+
+
+    plt.xlabel("Temps (s)")
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    1.  Nous avons pris les matrices de gains `K` (obtenues via Placement de Pôles et LQR à partir du modèle linéarisé) et les avons appliquées au **modèle non linéaire complet** de la fusée.
+    2.  Nous avons simulé la réponse du modèle non linéaire avec chaque contrôleur, en partant d'une inclinaison initiale de 45 degrés.
+    3.  Nous avons vérifié sur les graphiques que `θ(t)` (angle) et `x(t)` (position horizontale) revenaient bien à zéro en moins de 20 secondes, et que les contraintes sur `θ` et `ϕ` (commande) étaient respectées.
     """
     )
     return
