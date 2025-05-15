@@ -1311,7 +1311,7 @@ def _(A, B, np):
     rank_C = np.linalg.matrix_rank(C)
     print(f"Rank of controllability matrix: {rank_C}")
     print(f"System is {'controllable' if rank_C == A.shape[0] else 'not controllable'}")
-    return
+    return (compute_controllability_matrix,)
 
 
 @app.cell(hide_code=True)
@@ -1342,6 +1342,94 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
+    mo.md(
+        r"""
+    ### Modèle réduit (position latérale et inclinaison)
+
+    On se concentre sur la position latérale \( x \), l’inclinaison \( \theta \) et leurs dérivées.  
+    La poussée est fixée à \( f = Mg \) et on contrôle uniquement avec \( \phi \).
+
+    Le vecteur d’état réduit est :
+
+    \[
+    X_\text{réduit} = 
+    \begin{bmatrix}
+    \Delta x \\
+    \Delta \dot{x} \\
+    \Delta \theta \\
+    \Delta \dot{\theta}
+    \end{bmatrix}
+    \]
+
+    Le vecteur d’entrée réduit :
+
+    \[
+    U_\text{réduit} = \begin{bmatrix}
+    \Delta \phi
+    \end{bmatrix}
+    \]
+
+    La matrice \( A \) réduite :
+
+    \[
+    A_\text{réduit} =
+    \begin{bmatrix}
+    0 & 1 & 0 & 0 \\
+    0 & 0 & -g & 0 \\
+    0 & 0 & 0 & 1 \\
+    0 & 0 & 0 & 0
+    \end{bmatrix}
+    \]
+
+    La matrice \( B \) réduite :
+
+    \[
+    B_\text{réduit} =
+    \begin{bmatrix}
+    0 \\
+    -g \\
+    0 \\
+    -\dfrac{\ell M g}{J}
+    \end{bmatrix}
+    \]
+
+    """
+    )
+    return
+
+
+@app.cell
+def _(J, M, compute_controllability_matrix, g, l, np):
+    A_reduced = np.array([
+        [0, 1, 0, 0],
+        [0, 0, -g, 0],
+        [0, 0, 0, 1],
+        [0, 0, 0, 0]
+    ])
+
+    B_reduced = np.array([
+        [0],
+        [-g],
+        [0],
+        [-l*M*g/J]
+    ]).reshape(4, 1)
+
+
+    C_reduced = compute_controllability_matrix(A_reduced, B_reduced)
+    rank_C_reduced = np.linalg.matrix_rank(C_reduced)
+    print(f"Rank of reduced controllability matrix: {rank_C_reduced}")
+    print(f"Reduced system is {'controllable' if rank_C_reduced == A_reduced.shape[0] else 'not controllable'}")
+    return (A_reduced,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""Le rang de la matrice de contrôlabilité réduite est 4, ce qui est égal à la dimension du système réduit. Le système réduit est donc également contrôlable.""")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md(r""" """)
     return
 
@@ -1354,6 +1442,99 @@ def _(mo):
 
     Make graphs of $y(t)$ and $\theta(t)$ for the linearized model when $\phi(t)=0$,
     $x(0)=0$, $\dot{x}(0)=0$, $\theta(0) = 45 / 180  \times \pi$  and $\dot{\theta}(0) =0$. What do you see? How do you explain it?
+    """
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    Dans ce scénario, on analyse le modèle linéarisé en supposant que \(\phi(t) = 0\), avec les conditions initiales suivantes :
+
+    - \( x(0) = 0 \)  
+    - \( \dot{x}(0) = 0 \)  
+    - \( \theta(0) = 45^\circ = \frac{\pi}{4} \)  
+    - \( \dot{\theta}(0) = 0 \)
+
+    Pour simuler ce système, on peut utiliser les méthodes standards de résolution d’équations différentielles (ODE), comme :
+    """
+    )
+    return
+
+
+@app.cell
+def _(A_reduced, np, plt):
+    from scipy.integrate import solve_ivp
+
+    delta_x0 = 0.0
+    delta_v_x0 = 0.0
+    delta_theta0 = (45/180) * np.pi
+    delta_omega_theta0 = 0.0
+
+    initial_conditions_reduced = np.array([delta_x0, delta_v_x0, delta_theta0, delta_omega_theta0])
+
+
+    t_start = 0.0
+    t_end = 5.0
+    t_eval = np.linspace(t_start, t_end, 500)
+
+    def linearized_system_reduced(t, delta_X_reduced):
+        return A_reduced @ delta_X_reduced
+
+    sol_reduced = solve_ivp(linearized_system_reduced, [t_start, t_end], initial_conditions_reduced,
+                            dense_output=True, t_eval=t_eval)
+
+
+    delta_theta_t_sim = sol_reduced.y[2, :]
+    theta_t_sim = delta_theta_t_sim
+
+    y_eq_assumed = 10.0
+    y_t_sim = np.full_like(t_eval, y_eq_assumed)
+
+    theta_t_analytical = np.full_like(t_eval, delta_theta0)
+
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(t_eval, y_t_sim, label=r'$y(t)$ (linearized model, assuming $y_{eq}$)')
+    plt.title(r'Plot of $y(t)$ for Linearized Model ($\Delta f=0, \Delta\dot{y}(0)=0$)')
+    plt.xlabel('Time (s)')
+    plt.ylabel(r'$y(t)$ (m)')
+    plt.ylim(y_eq_assumed - 1, y_eq_assumed + 1) # Adjust if needed
+    plt.grid(True)
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(t_eval, theta_t_sim, label=r'$\theta(t)$ (linearized model)')
+    plt.plot(t_eval, theta_t_analytical, 'r--', label=r'$\theta(t)$ (analytical from derivation)')
+    plt.title(r'Plot of $\theta(t)$ for Linearized Model ($\Delta\phi=0$)')
+    plt.xlabel('Time (s)')
+    plt.ylabel(r'$\theta(t)$ (radians)')
+    plt.ylim(delta_theta0 - 0.1, delta_theta0 + 0.1) # Zoom around constant value
+    plt.axhline(delta_theta0, color='gray', linestyle=':', label=fr'$\theta(0) = \pi/4$')
+    plt.grid(True)
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ### Analyse des résultats
+
+    Pour le modèle linéarisé en chute libre avec une inclinaison initiale de 45° :
+
+    - La position angulaire \( \theta \) reste constante à 45°, car aucun couple n'agit sur le lanceur lorsque \( \phi = 0 \).
+    - \( y \) est constante parcequ'on travail dans l'équilibre, \( y = y_e \).
+    - Cela a du sens physiquement : en l'absence de commande et avec une inclinaison initiale, la fusée continue de tomber suivant cet angle sans changer d’orientation.
+
     """
     )
     return
@@ -1401,6 +1582,12 @@ def _(mo):
     Is your closed-loop model asymptotically stable?
     """
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r""" """)
     return
 
 
