@@ -1472,7 +1472,7 @@ def _(A_reduced, B_reduced, np, plt):
         return A_reduced @ state + B_reduced @ u
 
     x0 = np.array([0.0, 0.0, np.pi/4, 0.0])
-    t_span = [0, 5]
+    t_span = [0, 20]
     # Time span
     t_eval = np.linspace(t_span[0], t_span[1], 1000)
 
@@ -1652,10 +1652,11 @@ def _(A_reduced, B_reduced, np, plt, solve_ivp, t_eval, t_span, x0):
     plt.ylabel('Control Input (rad)')
 
 
+
     plt.tight_layout()
     plt.show()
 
-    return
+    return (simulate_controlled_system,)
 
 
 @app.cell(hide_code=True)
@@ -1701,6 +1702,86 @@ def _(mo):
       - make $\Delta x(t) \to 0$ in approximately $20$ sec (or less).
 
     Explain how you find the proper design parameters!
+    """
+    )
+    return
+
+
+@app.cell
+def _(
+    A_reduced,
+    B_reduced,
+    np,
+    plt,
+    simulate_controlled_system,
+    t_eval,
+    t_span,
+    x0,
+):
+    from scipy import signal
+
+    desired_poles = [-0.5+0.3j, -0.5-0.3j, -0.4+0.2j, -0.4-0.2j]
+
+    K_pp = signal.place_poles(A_reduced, B_reduced, desired_poles).gain_matrix
+    print("K_pp:", K_pp)
+
+    # Simulate with the pole placement controller
+    sol_pp = simulate_controlled_system(K_pp, A_reduced, B_reduced, x0, t_span, t_eval)
+
+    # Check closed-loop stability
+    A_cl_pp = A_reduced - B_reduced @ K_pp
+    eigenvalues_cl_pp = np.linalg.eigvals(A_cl_pp)
+    print("Closed-loop eigenvalues with pole placement:", eigenvalues_cl_pp)
+
+    # Plot results
+    plt.figure(figsize=(12, 10))
+
+    # Position plot
+    plt.subplot(3, 1, 1)
+    plt.plot(sol_pp.t, sol_pp.y[0], label='Δx(t)')
+    plt.axhline(y=0, color='r', linestyle='--', alpha=0.3)
+    plt.grid(True)
+    plt.legend()
+    plt.title('Position vs Time')
+    plt.ylabel('Δx (m)')
+
+    # Angle plot
+    plt.subplot(3, 1, 2)
+    plt.plot(sol_pp.t, sol_pp.y[2], label='Δθ(t)')
+    plt.axhline(y=0, color='r', linestyle='--', alpha=0.3)
+    plt.axhline(y=np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.axhline(y=-np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.grid(True)
+    plt.legend()
+    plt.title('Angle vs Time')
+    plt.ylabel('Angle (rad)')
+
+    # Control input plot
+    plt.subplot(3, 1, 3)
+    control_input_pp = np.array([-K_pp @ sol_pp.y[:, i] for i in range(len(sol_pp.t))])
+    plt.plot(sol_pp.t, control_input_pp, label='Δφ(t)')
+    plt.axhline(y=np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.axhline(y=-np.pi/2, color='k', linestyle=':', alpha=0.3)
+    plt.grid(True)
+    plt.legend()
+    plt.title('Control Input vs Time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Control Input (rad)')
+
+    plt.tight_layout()
+    plt.show()
+
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ### Choix des pôles désirés
+    on a choisi les valeurs des poles pour que le système soit résponsive le plus rapide possible ( < 20s)
+
+
     """
     )
     return
