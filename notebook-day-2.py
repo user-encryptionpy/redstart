@@ -1018,6 +1018,8 @@ def _(mo):
         \theta = 0, \quad \phi = 0, \quad f = Mg, \quad \dot{x} = \dot{y} = \dot{\theta} = 0
         $$
 
+        $$x = 0,\quad y = l $$
+
     """
     )
     return
