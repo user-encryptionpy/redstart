@@ -2041,7 +2041,7 @@ def _(M, g, l, np):
 
             tg_theta =   d2h_x / (d2h_y + g)
     
-            theta = np.arcta2(tg_theta)  
+            theta = np.arctan(tg_theta)  
     
             sin_theta = np.sin(theta)
             cos_theta = np.cos(theta)
@@ -2098,11 +2098,6 @@ def _(mo):
     that returns a function `fun` such that `fun(t)` is a value of `x, dx, y, dy, theta, dtheta, z, dz, f, phi` at time `t` that match the initial and final values provided as arguments to `compute`.
     """
     )
-    return
-
-
-@app.cell
-def _():
     return
 
 
