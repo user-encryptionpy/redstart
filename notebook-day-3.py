@@ -1683,7 +1683,7 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    mo.image(src="Draw/geo.png")
+    mo.image(src="public/images/geo.png")
     return
 
 
