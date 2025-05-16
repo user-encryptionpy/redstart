@@ -2241,7 +2241,7 @@ def _(np):
                     z_aux1_t, dz_aux1_dt_t, f_amplitude_t, phi_t)
 
         return fun
-    return
+    return (compute,)
 
 
 @app.cell(hide_code=True)
@@ -2263,7 +2263,235 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(compute, np, plt):
+    from IPython.display import HTML, display
+    import matplotlib.animation as animation
+    import os
+    import matplotlib.patches as patches
+
+
+    l_param_glob = 1.0
+    M_param_glob = 1.0
+    g_param_glob = 1.0 
+                   
+    def calculate_h_derivatives(x_state, dx_state, y_state, dy_state,
+                                 theta_state, dtheta_state,
+                                 z_state, dz_state,
+                                 l, M, g):
+        sin_theta = np.sin(theta_state)
+        cos_theta = np.cos(theta_state)
+        h_x = x_state - (l / 3) * sin_theta
+        h_y = y_state + (l / 3) * cos_theta
+        dh_x = dx_state - (l / 3) * dtheta_state * cos_theta
+        dh_y = dy_state - (l / 3) * dtheta_state * sin_theta
+        d2h_x = (z_state / M) * sin_theta
+        d2h_y = -(z_state / M) * cos_theta - g
+        d3h_x = (1 / M) * (cos_theta * dtheta_state * z_state + sin_theta * dz_state)
+        d3h_y = (1 / M) * (sin_theta * dtheta_state * z_state - cos_theta * dz_state)
+        return h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y
+
+    def get_poly_coeffs_deg7(y0, dy0, ddy0, dddy0, yf, dyf, ddyf, dddyf, tf_poly):
+        if abs(tf_poly) < 1e-9: 
+            if not (np.allclose(y0,yf) and np.allclose(dy0,dyf) and \
+                    np.allclose(ddy0,ddyf) and np.allclose(dddy0,dddyf)):
+                 return np.array([y0, dy0, ddy0/2, dddy0/6, 0, 0, 0, 0]) # Approximation
+            return np.array([y0, dy0, ddy0/2, dddy0/6, 0, 0, 0, 0])
+
+        M_poly = np.array([
+            [1, 0,  0,   0,    0,     0,      0,       0     ],
+            [0, 1,  0,   0,    0,     0,      0,       0     ],
+            [0, 0,  2,   0,    0,     0,      0,       0     ],
+            [0, 0,  0,   6,    0,     0,      0,       0     ],
+            [1, tf_poly, tf_poly**2, tf_poly**3, tf_poly**4,  tf_poly**5,   tf_poly**6,    tf_poly**7  ],
+            [0, 1, 2*tf_poly,3*tf_poly**2,4*tf_poly**3,5*tf_poly**4, 6*tf_poly**5,  7*tf_poly**6  ],
+            [0, 0,  2,  6*tf_poly, 12*tf_poly**2,20*tf_poly**3,30*tf_poly**4, 42*tf_poly**5 ],
+            [0, 0,  0,   6,  24*tf_poly, 60*tf_poly**2,120*tf_poly**3,210*tf_poly**4]
+        ])
+        Y_conditions = np.array([y0, dy0, ddy0, dddy0, yf, dyf, ddyf, dddyf])
+        try:
+            coeffs = np.linalg.solve(M_poly, Y_conditions)
+        except np.linalg.LinAlgError:
+            print("Erreur: La matrice polynomiale est singulière. Vérifiez tf et les conditions.")
+            coeffs = np.zeros(8) 
+            coeffs[0] = y0 
+        return coeffs
+
+    def poly_val(coeffs, t_poly, order=0):
+        val = 0.0
+        if order == 0:
+            for i in range(len(coeffs)): val += coeffs[i] * (t_poly**i)
+        elif order == 1:
+            for i in range(1, len(coeffs)): val += i * coeffs[i] * (t_poly**(i-1 if i > 1 else 0) if t_poly != 0 or i-1 >= 0 else (coeffs[1] if i==1 else 0.0) )
+        elif order == 2:
+            for i in range(2, len(coeffs)): val += i*(i-1) * coeffs[i] * (t_poly**(i-2 if i > 2 else 0) if t_poly != 0 or i-2 >= 0 else (2*coeffs[2] if i==2 else 0.0))
+        elif order == 3:
+            for i in range(3, len(coeffs)): val += i*(i-1)*(i-2) * coeffs[i] * (t_poly**(i-3 if i > 3 else 0) if t_poly != 0 or i-3 >= 0 else (6*coeffs[3] if i==3 else 0.0))
+        elif order == 4:
+            for i in range(4, len(coeffs)): val += i*(i-1)*(i-2)*(i-3) * coeffs[i] * (t_poly**(i-4 if i > 4 else 0) if t_poly != 0 or i-4 >= 0 else (24*coeffs[4] if i==4 else 0.0))
+        else:
+            raise ValueError("Ordre de dérivation non supporté pour poly_val")
+        return val
+
+    x_0_test, dx_0_test, y_0_test, dy_0_test = 5.0, 0.0, 20.0, -1.0
+    theta_0_test, dtheta_0_test = -np.pi/8, 0.0
+    z_0_test, dz_0_test = -M_param_glob*g_param_glob, 0.0
+
+    x_tf_test, dx_tf_test, y_tf_test, dy_tf_test = 0.0, 0.0, (4/3)*l_param_glob, 0.0
+    theta_tf_test, dtheta_tf_test = 0.0, 0.0
+    z_tf_test, dz_tf_test = -M_param_glob*g_param_glob, 0.0
+
+    tf_duration_test = 10.0
+
+    print("--- Test de la fonction compute ---")
+    trajectory_gen_func = compute(
+        x_0_test, dx_0_test, y_0_test, dy_0_test, theta_0_test, dtheta_0_test, z_0_test, dz_0_test,
+        x_tf_test, dx_tf_test, y_tf_test, dy_tf_test, theta_tf_test, dtheta_tf_test, z_tf_test, dz_tf_test,
+        tf_duration_test,
+        l_param_glob, M_param_glob, g_param_glob
+    )
+
+    times_for_eval = np.array([0.0, tf_duration_test / 2, tf_duration_test])
+    print(f"\nTrajectoire de t=0 à t={tf_duration_test:.1f}s. Objectif x_tf={x_tf_test}, y_tf={y_tf_test:.2f}, theta_tf={theta_tf_test}")
+    print("t   | x    | dx   | y    | dy   | theta | dtheta | z    | dz   | f    | phi (deg)")
+    print("----|------|------|------|------|-------|--------|------|------|------|-----------")
+
+    trajectory_data = []
+    for t_val in times_for_eval:
+        res_tuple = trajectory_gen_func(t_val)
+        trajectory_data.append(res_tuple)
+        print(f"{t_val:<4.1f}| {res_tuple[0]:<5.2f}| {res_tuple[1]:<5.2f}| {res_tuple[2]:<5.2f}| {res_tuple[3]:<5.2f}| "
+              f"{res_tuple[4]:<6.2f}| {res_tuple[5]:<7.2f}| {res_tuple[6]:<5.2f}| {res_tuple[7]:<5.2f}| "
+              f"{res_tuple[8]:<5.2f}| {np.rad2deg(res_tuple[9]):<7.1f}")
+
+
+    def draw_booster_for_video(ax, x_center_mass, y_center_mass, theta_fus_rad,
+                               f_poussee_mag, phi_flamme_rel_CoM_Base, # 
+                               l_demi_longueur, M_masse, g_grav):
+        artists = []
+        BOOSTER_WIDTH = l_demi_longueur * 0.4
+        FLAME_BASE_WIDTH = BOOSTER_WIDTH * 0.85
+        MIN_THRUST_FOR_FLAME = 1e-3
+        MAX_VISUAL_FLAME_LENGTH = l_demi_longueur * 3.5 
+
+
+        u_CoM_vers_Nez = np.array([-np.sin(theta_fus_rad), np.cos(theta_fus_rad)])
+        u_CoM_vers_Base = -u_CoM_vers_Nez 
+
+        P_origine_flamme = np.array([x_center_mass, y_center_mass]) - l_demi_longueur * u_CoM_vers_Base
+        u_fus_perp_droite = np.array([np.cos(theta_fus_rad), np.sin(theta_fus_rad)]) 
+        P_nez_centre = np.array([x_center_mass, y_center_mass]) - l_demi_longueur * u_CoM_vers_Nez
+
+        C1_nez_droite = P_nez_centre + (BOOSTER_WIDTH / 2) * u_fus_perp_droite
+        C2_nez_gauche = P_nez_centre - (BOOSTER_WIDTH / 2) * u_fus_perp_droite
+        C3_base_gauche = P_origine_flamme - (BOOSTER_WIDTH / 2) * u_fus_perp_droite
+        C4_base_droite = P_origine_flamme + (BOOSTER_WIDTH / 2) * u_fus_perp_droite
+   
+        corps_fusée = patches.Polygon([C1_nez_droite, C2_nez_gauche, C3_base_gauche, C4_base_droite],
+                                      closed=True, fc='darkgrey', ec='black', zorder=10)
+        ax.add_patch(corps_fusée)
+        artists.append(corps_fusée)
+
+        if f_poussee_mag > MIN_THRUST_FOR_FLAME and not np.isnan(f_poussee_mag) and not np.isnan(phi_flamme_rel_CoM_Base):
+
+       
+            e_CoM_Base_vec = u_CoM_vers_Base
+            e_CoM_Base_Perp_vec = np.array([np.cos(theta_fus_rad), np.sin(theta_fus_rad)])
+
+            u_direction_flamme = (np.cos(phi_flamme_rel_CoM_Base) * e_CoM_Base_vec +
+                                  np.sin(phi_flamme_rel_CoM_Base) * e_CoM_Base_Perp_vec)
+       
+            longueur_flamme = np.clip((l_demi_longueur / (M_masse * g_grav if M_masse * g_grav > 1e-6 else 1.0)) * f_poussee_mag,
+                                      0, MAX_VISUAL_FLAME_LENGTH)
+            if longueur_flamme < l_demi_longueur * 0.1 and f_poussee_mag > MIN_THRUST_FOR_FLAME: 
+                 longueur_flamme = l_demi_longueur * 0.1
+
+            P_sommet_flamme = P_origine_flamme + longueur_flamme * u_direction_flamme
+       
+
+            u_flamme_perp = np.array([-u_direction_flamme[1], u_direction_flamme[0]])
+            P_flamme_gauche = P_origine_flamme - (FLAME_BASE_WIDTH / 2) * u_flamme_perp
+            P_flamme_droite = P_origine_flamme + (FLAME_BASE_WIDTH / 2) * u_flamme_perp
+       
+            flamme_poly = patches.Polygon([P_flamme_gauche, P_flamme_droite, P_sommet_flamme],
+                                          closed=True, fc='orangered', ec='none', alpha=0.75, zorder=5)
+            ax.add_patch(flamme_poly)
+            artists.append(flamme_poly)
+        return artists
+
+    def create_trajectory_video(nom_scenario, traj_func, t_fin_vid, fps_vid=25,
+                                l_vid=l_param_glob, M_vid=M_param_glob, g_vid=g_param_glob):
+        print(f"Génération de la vidéo pour : {nom_scenario}")
+        fig_vid, ax_vid = plt.subplots(figsize=(8,10)) # Portrait pour voir y
+   
+        num_frames_vid = int(t_fin_vid * fps_vid)
+        t_frames_vid = np.linspace(0, t_fin_vid, num_frames_vid)
+
+        # Obtenir toutes les données pour déterminer les limites du graphe
+        all_states_for_lims = np.array([traj_func(t) for t in t_frames_vid])
+        x_coords_lim = all_states_for_lims[:,0]
+        y_coords_lim = all_states_for_lims[:,2]
+
+        ax_vid.set_xlim(min(x_coords_lim.min(), -l_vid*1), max(x_coords_lim.max(), x_0_test + l_vid*1) + l_vid*2)
+        ax_vid.set_ylim(min(y_coords_lim.min(), -l_vid*0.5), max(y_coords_lim.max(), y_0_test + l_vid*1) + l_vid*1)
+        ax_vid.set_aspect('equal', adjustable='box')
+        ax_vid.grid(True, linestyle='--', alpha=0.7)
+        ax_vid.set_xlabel("x (m)"); ax_vid.set_ylabel("y (m)")
+        ax_vid.set_title(f"Trajectoire Fusée: {nom_scenario}")
+
+        ground_line_vid = ax_vid.axhline(0, color='darkgreen', lw=2, zorder=1)
+        target_landing_pad_vid = patches.Rectangle((x_tf_test - l_vid/2, y_tf_test - l_vid/10), l_vid, l_vid/5,
+                                                facecolor='lightgreen', edgecolor='green', zorder=1.5)
+        ax_vid.add_patch(target_landing_pad_vid)
+        target_center_vid = ax_vid.plot(x_tf_test, y_tf_test, 'X', color='darkred', ms=10, zorder=1.6)[0]
+   
+        time_text_vid = ax_vid.text(0.02, 0.98, '', transform=ax_vid.transAxes, fontsize=9, va='top',
+                                    bbox=dict(boxstyle='round,pad=0.3', fc='wheat', alpha=0.8))
+        dynamic_artists_vid = []
+
+        def animate_video_frame(i_frame):
+            nonlocal dynamic_artists_vid
+            for artist in dynamic_artists_vid: artist.remove()
+            dynamic_artists_vid = []
+
+            t_current_frame = t_frames_vid[i_frame]
+            s = traj_func(t_current_frame) # x,dx,y,dy,th,dth,z,dz,f,phi
+       
+
+            new_artists = draw_booster_for_video(ax_vid, s[0],s[2],s[4], s[8],s[9],
+                                                 l_vid, M_vid, g_vid)
+            dynamic_artists_vid.extend(new_artists)
+            time_text_vid.set_text(f"t={t_current_frame:.2f}s\n"
+                                   f"x={s[0]:.1f},y={s[2]:.1f},θ={np.rad2deg(s[4]):.1f}°\n"
+                                   f"f={s[8]:.1f},φ={np.rad2deg(s[9]):.1f}°")
+            return dynamic_artists_vid + [time_text_vid]
+
+        ani_vid = animation.FuncAnimation(fig_vid, animate_video_frame, frames=num_frames_vid,
+                                          interval=1000/fps_vid, blit=False)
+   
+        video_dir_output = "videos"
+        if not os.path.exists(video_dir_output): os.makedirs(video_dir_output)
+        filename_vid = f"trajectory_{nom_scenario.lower().replace(' ', '_')}.mp4"
+        full_path_vid = os.path.join(video_dir_output, filename_vid)
+
+        try:
+            ani_vid.save(full_path_vid, writer='ffmpeg', fps=fps_vid, dpi=150)
+            print(f"Vidéo sauvegardée : {full_path_vid}")
+            plt.close(fig_vid)
+            return HTML(f"""<video width="480" height="600" controls autoplay loop><source src="{full_path_vid}" type="video/mp4"></video>""")
+        except Exception as e_vid:
+            print(f"Erreur sauvegarde vidéo pour {nom_scenario}: {e_vid}")
+            plt.close(fig_vid)
+            return None
+
+
+    video_widget_test = create_trajectory_video(
+        "Test1_Compute_Function",
+        trajectory_gen_func,
+        tf_duration_test,
+        fps_vid=20 
+    )
+    if video_widget_test:
+        display(video_widget_test)
     return
 
 
