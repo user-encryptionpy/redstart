@@ -2039,27 +2039,40 @@ def _(mo):
 def _(M, g, l, np):
     def T_inv(h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y):
     
-        magnitude = np.sqrt(d3h_x**2 + d3h_y**2)
-        if magnitude < 1e-10:
-            raise ValueError("Cannot determine theta from near-zero third derivative")
-    
-        theta = np.arctan2(d3h_x, -d3h_y)  
-    
+        theta = np.arctan2(-d2h_x, d2h_y + g)
+
         sin_theta = np.sin(theta)
         cos_theta = np.cos(theta)
-        z = - M * (sin_theta * d2h_x - cos_theta * d2h_y + cos_theta * g)
+
+        if abs(sin_theta) > 1e-8:
+            z1 = M * d2h_x / sin_theta
+        else:
+            z1 = None
+        
+        if abs(cos_theta) > 1e-8:
+            z2 = -M * (d2h_y + g) / cos_theta
+        else:
+            z2 = None
+        
+        # Combine z estimates
+        if z1 is not None and z2 is not None:
+            z = (z1 + z2) / 2.0
+        elif z1 is not None:
+            z = z1
+        elif z2 is not None:
+            z = z2
+
     
-        dz = M * (sin_theta * d3h_x - cos_theta * d3h_y)
+        A = np.array([
+            [cos_theta * z, sin_theta],
+            [sin_theta * z, -cos_theta]
+        ])
+        b_vec = M * np.array([d3h_x, d3h_y])
     
-        # Project h^(3) onto [cos θ, sin θ] to get θ̇ * z component
-        dtheta_z = M * (cos_theta * d3h_x + sin_theta * d3h_y)
-    
-        # Compute dtheta
-        dtheta = dtheta_z / z
+        dtheta, dz = np.linalg.solve(A, b_vec)
     
         x = h_x + (l/3) * sin_theta
         y = h_y - (l/3) * cos_theta
-
         dx = dh_x + (l/3) * cos_theta * dtheta
         dy = dh_y + (l/3) * sin_theta * dtheta
     
