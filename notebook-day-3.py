@@ -1681,6 +1681,12 @@ def _(mo):
     return
 
 
+@app.cell
+def _(mo):
+    mo.image(src="public/images/geo.png")
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
