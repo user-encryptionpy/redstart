@@ -2101,6 +2101,149 @@ def _(mo):
     return
 
 
+@app.cell
+def _(np):
+    def solve_poly_coeffs(y0, y0d, y0dd, y0ddd, yf, yfd, yfdd, yfddd, tf):
+        coeffs = np.zeros(8)
+        coeffs[0] = y0
+        coeffs[1] = y0d
+        coeffs[2] = y0dd / 2.0
+        coeffs[3] = y0ddd / 6.0
+
+        if tf == 0: 
+            if np.allclose([y0, y0d, y0dd, y0ddd], [yf, yfd, yfdd, yfddd]):
+                return coeffs 
+            else:
+                  pass
+
+        tf2 = tf**2
+        tf3 = tf**3
+        tf4 = tf**4
+        tf5 = tf**5
+        tf6 = tf**6
+
+        A = np.array([
+            [tf**4,       tf**5,         tf**6,         tf**7],
+            [4*tf**3,     5*tf**4,       6*tf**5,       7*tf**6],
+            [12*tf**2,    20*tf**3,      30*tf**4,      42*tf**5],
+            [24*tf,       60*tf**2,      120*tf**3,     210*tf**4]
+        ])
+
+        b = np.array([
+            yf   - (coeffs[0] + coeffs[1]*tf + coeffs[2]*tf**2 + coeffs[3]*tf**3),
+            yfd  - (coeffs[1] + 2*coeffs[2]*tf + 3*coeffs[3]*tf**2),
+            yfdd - (2*coeffs[2] + 6*coeffs[3]*tf),
+            yfddd- (6*coeffs[3])
+        ])
+
+        c4_c7 = np.linalg.solve(A, b)
+        coeffs[4:8] = c4_c7
+
+        return coeffs
+
+    def poly_eval(coeffs, t):
+        val    = coeffs[0] + coeffs[1]*t + coeffs[2]*t**2 + coeffs[3]*t**3 + \
+                 coeffs[4]*t**4 + coeffs[5]*t**5 + coeffs[6]*t**6 + coeffs[7]*t**7
+        d_val  = coeffs[1] + 2*coeffs[2]*t + 3*coeffs[3]*t**2 + 4*coeffs[4]*t**3 + \
+                 5*coeffs[5]*t**4 + 6*coeffs[6]*t**5 + 7*coeffs[7]*t**6
+        d2_val = 2*coeffs[2] + 6*coeffs[3]*t + 12*coeffs[4]*t**2 + 20*coeffs[5]*t**3 + \
+                 30*coeffs[6]*t**4 + 42*coeffs[7]*t**5
+        d3_val = 6*coeffs[3] + 24*coeffs[4]*t + 60*coeffs[5]*t**2 + 120*coeffs[6]*t**3 + \
+                 210*coeffs[7]*t**4
+        d4_val = 24*coeffs[4] + 120*coeffs[5]*t + 360*coeffs[6]*t**2 + 840*coeffs[7]*t**3
+        return val, d_val, d2_val, d3_val, d4_val
+
+    def T_map(x, dx, y, dy, theta, dtheta, z_aux1, dz_aux1_dt, M, g, l):
+        sin_th, cos_th = np.sin(theta), np.cos(theta)
+    
+        h_x = x - (l/3)*sin_th
+        h_y = y + (l/3)*cos_th
+    
+        dh_x = dx - (l/3)*cos_th*dtheta
+        dh_y = dy - (l/3)*sin_th*dtheta 
+
+        d2h_x = (-z_aux1/M) * sin_th
+        d2h_y = (z_aux1/M) * cos_th - g
+    
+        d3h_x = (1/M) * (-cos_th*dtheta*z_aux1 - sin_th*dz_aux1_dt)
+        d3h_y = (1/M) * (-sin_th*dtheta*z_aux1 + cos_th*dz_aux1_dt)
+    
+        return h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y
+
+
+    def T_inv_map(h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y, M, g, l):
+        z_aux1 = M * np.sqrt(d2h_x**2 + (d2h_y + g)**2)
+        theta = np.arctan2(-d2h_x, d2h_y + g)
+    
+        sin_th, cos_th = np.sin(theta), np.cos(theta)
+    
+        if abs(z_aux1) > 1e-10:  
+            dtheta = (M/z_aux1) * (d3h_y*sin_th - d3h_x*cos_th)
+        else:
+            dtheta = 0
+        
+        dz_aux1_dt = M * (d2h_x*d3h_x + (d2h_y+g)*d3h_y) / np.sqrt(d2h_x**2 + (d2h_y+g)**2)
+    
+        x = h_x + (l/3)*sin_th
+        y = h_y - (l/3)*cos_th
+    
+        dx = dh_x + (l/3)*cos_th*dtheta
+        dy = dh_y + (l/3)*sin_th*dtheta
+    
+        return x, dx, y, dy, theta, dtheta, z_aux1, dz_aux1_dt
+
+    def compute(x_0, dx_0, y_0, dy_0, theta_0, dtheta_0, z_0, dz_0,
+                x_tf, dx_tf, y_tf, dy_tf, theta_tf, dtheta_tf, z_tf, dz_tf,
+                tf, M, g, l):  
+
+        h_x0, h_y0, dh_x0, dh_y0, d2h_x0, d2h_y0, d3h_x0, d3h_y0 = \
+            T_map(x_0, dx_0, y_0, dy_0, theta_0, dtheta_0, z_0, dz_0, M, g, l)
+    
+        h_xtf, h_ytf, dh_xtf, dh_ytf, d2h_xtf, d2h_ytf, d3h_xtf, d3h_ytf = \
+            T_map(x_tf, dx_tf, y_tf, dy_tf, theta_tf, dtheta_tf, z_tf, dz_tf, M, g, l)
+
+        if tf <= 0:
+            raise ValueError("Time final must be positive")
+        
+        coeffs_hx = solve_poly_coeffs(h_x0, dh_x0, d2h_x0, d3h_x0, 
+                                      h_xtf, dh_xtf, d2h_xtf, d3h_xtf, tf)
+        coeffs_hy = solve_poly_coeffs(h_y0, dh_y0, d2h_y0, d3h_y0,
+                                      h_ytf, dh_ytf, d2h_ytf, d3h_ytf, tf)
+
+        def fun(t_eval):
+            t_eval = np.clip(t_eval, 0, tf)
+
+            h_x_t, dh_x_t, d2h_x_t, d3h_x_t, u_x_t = poly_eval(coeffs_hx, t_eval)
+            h_y_t, dh_y_t, d2h_y_t, d3h_y_t, u_y_t = poly_eval(coeffs_hy, t_eval)
+
+            x_t, dx_t, y_t, dy_t, theta_t, dtheta_t, z_aux1_t, dz_aux1_dt_t = \
+                T_inv_map(h_x_t, h_y_t, dh_x_t, dh_y_t, d2h_x_t, d2h_y_t, d3h_x_t, d3h_y_t, M, g, l)
+        
+            sin_th_t, cos_th_t = np.sin(theta_t), np.cos(theta_t)
+
+            d2theta_t = -(M/z_aux1_t)*(u_x_t*cos_th_t + u_y_t*sin_th_t) - \
+                            (2/z_aux1_t)*dtheta_t*dz_aux1_dt_t
+        
+            d2x_t = d2h_x_t + (l/3)*(-sin_th_t*dtheta_t**2 + cos_th_t*d2theta_t)
+            d2y_t = d2h_y_t + (l/3)*(cos_th_t*dtheta_t**2 + sin_th_t*d2theta_t)
+
+            fx_reactor_t = M*d2x_t
+            fy_reactor_t = M*d2y_t + M*g  
+
+            f_amplitude_t = np.sqrt(fx_reactor_t**2 + fy_reactor_t**2)
+        
+            Angle_thrust_inertial_t = np.arctan2(-fx_reactor_t/f_amplitude_t, fy_reactor_t/f_amplitude_t)
+            phi_t = Angle_thrust_inertial_t - theta_t
+        
+            phi_t = (phi_t + np.pi) % (2 * np.pi) - np.pi
+        
+            return (x_t, dx_t, y_t, dy_t, theta_t, dtheta_t, 
+                    z_aux1_t, dz_aux1_dt_t, f_amplitude_t, phi_t)
+
+        return fun
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -2116,6 +2259,11 @@ def _(mo):
     Make the graph of the relevant variables as a function of time, then make a video out of the same result. Comment and iterate if necessary!
     """
     )
+    return
+
+
+@app.cell
+def _():
     return
 
 
