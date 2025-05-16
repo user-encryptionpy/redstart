@@ -2036,31 +2036,51 @@ def _(mo):
 
 
 @app.cell
-def _(M, g, l, np):
-    def T_inv(h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y):
+def _(np):
+    def T_inv(h_x_in, h_y_in, dh_x_in, dh_y_in,
+              d2h_x_in, d2h_y_in, d3h_x_in, d3h_y_in,
+              l, M, g):
+        A_hddot = d2h_x_in
+        B_hddot = d2h_y_in + g
+        theta_out = np.arctan2(A_hddot, -B_hddot)
+   
+        z_over_M_squared = A_hddot**2 + B_hddot**2
 
-            tg_theta =   d2h_x / (d2h_y + g)
-    
-            theta = np.arctan(tg_theta)  
-    
-            sin_theta = np.sin(theta)
-            cos_theta = np.cos(theta)
+        if z_over_M_squared < 1e-18: 
         
-            z = - M * np.sqrt( d2h_x*2 + (d2h_y + g)*2)
-    
-            dz = M * (d3h_x - tg_theta * d3h_y)/(2 * sin_theta)
-    
-            # Compute dtheta
-            dtheta = (M * d3h_y + dz * cos_theta)/(z * sin_theta)
-    
-            x = h_x + (l/3) * sin_theta
-            y = h_y - (l/3) * cos_theta
+            z_out = -1e-9 * M 
+        else:
+            z_over_M = -np.sqrt(z_over_M_squared)
+            z_out = M * z_over_M
 
-            dx = dh_x + (l/3) * cos_theta * dtheta
-            dy = dh_y + (l/3) * sin_theta * dtheta
-    
-            return x, dx, y, dy, theta, dtheta, z, dz
-    return
+        if z_out >= -1e-9: 
+
+            if z_out > 1e-9: 
+
+                pass 
+            elif z_out > -1e-9 : 
+                z_out = -1e-9 * M
+
+
+        sin_theta_out = np.sin(theta_out)
+        cos_theta_out = np.cos(theta_out)
+        rhs_d3h_term1 = M * d3h_x_in
+        rhs_d3h_term2 = M * d3h_y_in
+        dtheta_times_z = cos_theta_out * rhs_d3h_term1 + sin_theta_out * rhs_d3h_term2
+        dz_out = sin_theta_out * rhs_d3h_term1 - cos_theta_out * rhs_d3h_term2
+   
+        if abs(z_out) < 1e-9:
+            dtheta_out = 0.0 
+        else:
+            dtheta_out = dtheta_times_z / z_out
+
+        x_out = h_x_in + (l / 3) * sin_theta_out
+        y_out = h_y_in - (l / 3) * cos_theta_out
+        dx_out = dh_x_in + (l / 3) * dtheta_out * cos_theta_out
+        dy_out = dh_y_in + (l / 3) * dtheta_out * sin_theta_out
+   
+        return x_out, dx_out, y_out, dy_out, theta_out, dtheta_out, z_out, dz_out
+    return (T_inv,)
 
 
 @app.cell(hide_code=True)
@@ -2102,144 +2122,124 @@ def _(mo):
 
 
 @app.cell
-def _(np):
-    def solve_poly_coeffs(y0, y0d, y0dd, y0ddd, yf, yfd, yfdd, yfddd, tf):
-        coeffs = np.zeros(8)
-        coeffs[0] = y0
-        coeffs[1] = y0d
-        coeffs[2] = y0dd / 2.0
-        coeffs[3] = y0ddd / 6.0
-
-        if tf == 0: 
-            if np.allclose([y0, y0d, y0dd, y0ddd], [yf, yfd, yfdd, yfddd]):
-                return coeffs 
-            else:
-                  pass
-
-        tf2 = tf**2
-        tf3 = tf**3
-        tf4 = tf**4
-        tf5 = tf**5
-        tf6 = tf**6
-
-        A = np.array([
-            [tf**4,       tf**5,         tf**6,         tf**7],
-            [4*tf**3,     5*tf**4,       6*tf**5,       7*tf**6],
-            [12*tf**2,    20*tf**3,      30*tf**4,      42*tf**5],
-            [24*tf,       60*tf**2,      120*tf**3,     210*tf**4]
-        ])
-
-        b = np.array([
-            yf   - (coeffs[0] + coeffs[1]*tf + coeffs[2]*tf**2 + coeffs[3]*tf**3),
-            yfd  - (coeffs[1] + 2*coeffs[2]*tf + 3*coeffs[3]*tf**2),
-            yfdd - (2*coeffs[2] + 6*coeffs[3]*tf),
-            yfddd- (6*coeffs[3])
-        ])
-
-        c4_c7 = np.linalg.solve(A, b)
-        coeffs[4:8] = c4_c7
-
-        return coeffs
-
-    def poly_eval(coeffs, t):
-        val    = coeffs[0] + coeffs[1]*t + coeffs[2]*t**2 + coeffs[3]*t**3 + \
-                 coeffs[4]*t**4 + coeffs[5]*t**5 + coeffs[6]*t**6 + coeffs[7]*t**7
-        d_val  = coeffs[1] + 2*coeffs[2]*t + 3*coeffs[3]*t**2 + 4*coeffs[4]*t**3 + \
-                 5*coeffs[5]*t**4 + 6*coeffs[6]*t**5 + 7*coeffs[7]*t**6
-        d2_val = 2*coeffs[2] + 6*coeffs[3]*t + 12*coeffs[4]*t**2 + 20*coeffs[5]*t**3 + \
-                 30*coeffs[6]*t**4 + 42*coeffs[7]*t**5
-        d3_val = 6*coeffs[3] + 24*coeffs[4]*t + 60*coeffs[5]*t**2 + 120*coeffs[6]*t**3 + \
-                 210*coeffs[7]*t**4
-        d4_val = 24*coeffs[4] + 120*coeffs[5]*t + 360*coeffs[6]*t**2 + 840*coeffs[7]*t**3
-        return val, d_val, d2_val, d3_val, d4_val
-
-    def T_map(x, dx, y, dy, theta, dtheta, z_aux1, dz_aux1_dt, M, g, l):
-        sin_th, cos_th = np.sin(theta), np.cos(theta)
-    
-        h_x = x - (l/3)*sin_th
-        h_y = y + (l/3)*cos_th
-    
-        dh_x = dx - (l/3)*cos_th*dtheta
-        dh_y = dy - (l/3)*sin_th*dtheta 
-
-        d2h_x = (-z_aux1/M) * sin_th
-        d2h_y = (z_aux1/M) * cos_th - g
-    
-        d3h_x = (1/M) * (-cos_th*dtheta*z_aux1 - sin_th*dz_aux1_dt)
-        d3h_y = (1/M) * (-sin_th*dtheta*z_aux1 + cos_th*dz_aux1_dt)
-    
+def _(T_inv, np):
+    def calculate_h_derivatives(x_state, dx_state, y_state, dy_state,
+                                 theta_state, dtheta_state,
+                                 z_state, dz_state,
+                                 l, M, g):
+        sin_theta = np.sin(theta_state)
+        cos_theta = np.cos(theta_state)
+        h_x = x_state - (l / 3) * sin_theta
+        h_y = y_state + (l / 3) * cos_theta
+        dh_x = dx_state - (l / 3) * dtheta_state * cos_theta
+        dh_y = dy_state - (l / 3) * dtheta_state * sin_theta
+        d2h_x = (z_state / M) * sin_theta
+        d2h_y = -(z_state / M) * cos_theta - g
+        d3h_x = (1 / M) * (cos_theta * dtheta_state * z_state + sin_theta * dz_state)
+        d3h_y = (1 / M) * (sin_theta * dtheta_state * z_state - cos_theta * dz_state)
         return h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y
 
 
-    def T_inv_map(h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y, M, g, l):
-        z_aux1 = M * np.sqrt(d2h_x**2 + (d2h_y + g)**2)
-        theta = np.arctan2(-d2h_x, d2h_y + g)
-    
-        sin_th, cos_th = np.sin(theta), np.cos(theta)
-    
-        if abs(z_aux1) > 1e-10:  
-            dtheta = (M/z_aux1) * (d3h_y*sin_th - d3h_x*cos_th)
+
+    def get_poly_coeffs_deg7(y0, dy0, ddy0, dddy0, yf, dyf, ddyf, dddyf, tf_poly):
+        if abs(tf_poly) < 1e-9: # tf est nul ou très petit
+            if not (np.allclose(y0,yf) and np.allclose(dy0,dyf) and \
+                    np.allclose(ddy0,ddyf) and np.allclose(dddy0,dddyf)):
+                 return np.array([y0, dy0, ddy0/2, dddy0/6, 0, 0, 0, 0]) # Approximation
+            return np.array([y0, dy0, ddy0/2, dddy0/6, 0, 0, 0, 0])
+
+        M_poly = np.array([
+            [1, 0,  0,   0,    0,     0,      0,       0     ],
+            [0, 1,  0,   0,    0,     0,      0,       0     ],
+            [0, 0,  2,   0,    0,     0,      0,       0     ],
+            [0, 0,  0,   6,    0,     0,      0,       0     ],
+            [1, tf_poly, tf_poly**2, tf_poly**3, tf_poly**4,  tf_poly**5,   tf_poly**6,    tf_poly**7  ],
+            [0, 1, 2*tf_poly,3*tf_poly**2,4*tf_poly**3,5*tf_poly**4, 6*tf_poly**5,  7*tf_poly**6  ],
+            [0, 0,  2,  6*tf_poly, 12*tf_poly**2,20*tf_poly**3,30*tf_poly**4, 42*tf_poly**5 ],
+            [0, 0,  0,   6,  24*tf_poly, 60*tf_poly**2,120*tf_poly**3,210*tf_poly**4]
+        ])
+        Y_conditions = np.array([y0, dy0, ddy0, dddy0, yf, dyf, ddyf, dddyf])
+        try:
+            coeffs = np.linalg.solve(M_poly, Y_conditions)
+        except np.linalg.LinAlgError:
+            print("Erreur: La matrice polynomiale est singulière. Vérifiez tf et les conditions.")
+            coeffs = np.zeros(8) # Retourner des zéros en cas d'erreur
+            coeffs[0] = y0 # Au moins la condition initiale
+        return coeffs
+
+    def poly_val(coeffs, t_poly, order=0):
+        val = 0.0
+        if order == 0:
+            for i in range(len(coeffs)): val += coeffs[i] * (t_poly**i)
+        elif order == 1:
+            for i in range(1, len(coeffs)): val += i * coeffs[i] * (t_poly**(i-1 if i > 1 else 0) if t_poly != 0 or i-1 >= 0 else (coeffs[1] if i==1 else 0.0) )
+        elif order == 2:
+            for i in range(2, len(coeffs)): val += i*(i-1) * coeffs[i] * (t_poly**(i-2 if i > 2 else 0) if t_poly != 0 or i-2 >= 0 else (2*coeffs[2] if i==2 else 0.0))
+        elif order == 3:
+            for i in range(3, len(coeffs)): val += i*(i-1)*(i-2) * coeffs[i] * (t_poly**(i-3 if i > 3 else 0) if t_poly != 0 or i-3 >= 0 else (6*coeffs[3] if i==3 else 0.0))
+        elif order == 4:
+            for i in range(4, len(coeffs)): val += i*(i-1)*(i-2)*(i-3) * coeffs[i] * (t_poly**(i-4 if i > 4 else 0) if t_poly != 0 or i-4 >= 0 else (24*coeffs[4] if i==4 else 0.0))
         else:
-            dtheta = 0
-        
-        dz_aux1_dt = M * (d2h_x*d3h_x + (d2h_y+g)*d3h_y) / np.sqrt(d2h_x**2 + (d2h_y+g)**2)
-    
-        x = h_x + (l/3)*sin_th
-        y = h_y - (l/3)*cos_th
-    
-        dx = dh_x + (l/3)*cos_th*dtheta
-        dy = dh_y + (l/3)*sin_th*dtheta
-    
-        return x, dx, y, dy, theta, dtheta, z_aux1, dz_aux1_dt
+            raise ValueError("Ordre de dérivation non supporté pour poly_val")
+        return val
+    def compute(
+        x_0_comp, dx_0_comp, y_0_comp, dy_0_comp, theta_0_comp, dtheta_0_comp, z_0_comp, dz_0_comp,
+        x_tf_comp, dx_tf_comp, y_tf_comp, dy_tf_comp, theta_tf_comp, dtheta_tf_comp, z_tf_comp, dz_tf_comp,
+        tf_comp,
+        l_comp, M_comp, g_comp
+    ):
+        h_vals_0 = calculate_h_derivatives(x_0_comp, dx_0_comp, y_0_comp, dy_0_comp, theta_0_comp, dtheta_0_comp,
+                                         z_0_comp, dz_0_comp, l_comp, M_comp, g_comp)
+        h_vals_tf = calculate_h_derivatives(x_tf_comp, dx_tf_comp, y_tf_comp, dy_tf_comp, theta_tf_comp, dtheta_tf_comp,
+                                          z_tf_comp, dz_tf_comp, l_comp, M_comp, g_comp)
 
-    def compute(x_0, dx_0, y_0, dy_0, theta_0, dtheta_0, z_0, dz_0,
-                x_tf, dx_tf, y_tf, dy_tf, theta_tf, dtheta_tf, z_tf, dz_tf,
-                tf, M, g, l):  
+        coeffs_hx = get_poly_coeffs_deg7(h_vals_0[0], h_vals_0[2], h_vals_0[4], h_vals_0[6],
+                                         h_vals_tf[0], h_vals_tf[2], h_vals_tf[4], h_vals_tf[6], tf_comp)
+        coeffs_hy = get_poly_coeffs_deg7(h_vals_0[1], h_vals_0[3], h_vals_0[5], h_vals_0[7],
+                                         h_vals_tf[1], h_vals_tf[3], h_vals_tf[5], h_vals_tf[7], tf_comp)
 
-        h_x0, h_y0, dh_x0, dh_y0, d2h_x0, d2h_y0, d3h_x0, d3h_y0 = \
-            T_map(x_0, dx_0, y_0, dy_0, theta_0, dtheta_0, z_0, dz_0, M, g, l)
-    
-        h_xtf, h_ytf, dh_xtf, dh_ytf, d2h_xtf, d2h_ytf, d3h_xtf, d3h_ytf = \
-            T_map(x_tf, dx_tf, y_tf, dy_tf, theta_tf, dtheta_tf, z_tf, dz_tf, M, g, l)
+        trajectory_params = {
+            "coeffs_hx": coeffs_hx, "coeffs_hy": coeffs_hy,
+            "l": l_comp, "M": M_comp, "g": g_comp
+        }
 
-        if tf <= 0:
-            raise ValueError("Time final must be positive")
-        
-        coeffs_hx = solve_poly_coeffs(h_x0, dh_x0, d2h_x0, d3h_x0, 
-                                      h_xtf, dh_xtf, d2h_xtf, d3h_xtf, tf)
-        coeffs_hy = solve_poly_coeffs(h_y0, dh_y0, d2h_y0, d3h_y0,
-                                      h_ytf, dh_ytf, d2h_ytf, d3h_ytf, tf)
+        def fun(t_fun):
+            params = trajectory_params
+            c_hx, c_hy = params["coeffs_hx"], params["coeffs_hy"]
+            l_f, M_f, g_f = params["l"], params["M"], params["g"]
 
-        def fun(t_eval):
-            t_eval = np.clip(t_eval, 0, tf)
+            h_x_t    = poly_val(c_hx, t_fun, 0); h_y_t    = poly_val(c_hy, t_fun, 0)
+            dh_x_t   = poly_val(c_hx, t_fun, 1); dh_y_t   = poly_val(c_hy, t_fun, 1)
+            d2h_x_t  = poly_val(c_hx, t_fun, 2); d2h_y_t  = poly_val(c_hy, t_fun, 2)
+            d3h_x_t  = poly_val(c_hx, t_fun, 3); d3h_y_t  = poly_val(c_hy, t_fun, 3)
+            d4h_x_t  = poly_val(c_hx, t_fun, 4); d4h_y_t  = poly_val(c_hy, t_fun, 4) # u1, u2
+       
+            u_t = np.array([d4h_x_t, d4h_y_t])
 
-            h_x_t, dh_x_t, d2h_x_t, d3h_x_t, u_x_t = poly_eval(coeffs_hx, t_eval)
-            h_y_t, dh_y_t, d2h_y_t, d3h_y_t, u_y_t = poly_eval(coeffs_hy, t_eval)
+            x_t, dx_t, y_t, dy_t, theta_t, dtheta_t, z_t, dz_t = \
+                T_inv(h_x_t, h_y_t, dh_x_t, dh_y_t,
+                      d2h_x_t, d2h_y_t, d3h_x_t, d3h_y_t,
+                      l_f, M_f, g_f)
+       
+            if np.isnan(dtheta_t): 
 
-            x_t, dx_t, y_t, dy_t, theta_t, dtheta_t, z_aux1_t, dz_aux1_dt_t = \
-                T_inv_map(h_x_t, h_y_t, dh_x_t, dh_y_t, d2h_x_t, d2h_y_t, d3h_x_t, d3h_y_t, M, g, l)
-        
+                return x_t, dx_t, y_t, dy_t, theta_t, dtheta_t, z_t, dz_t, np.nan, np.nan
+
+
             sin_th_t, cos_th_t = np.sin(theta_t), np.cos(theta_t)
+            R_pi2_minus_theta = np.array([[sin_th_t, cos_th_t], [-cos_th_t, sin_th_t]])
+            M_R_u = M_f * (R_pi2_minus_theta @ u_t)
+            additive_term_v = np.array([dtheta_t**2 * z_t, -2 * dtheta_t * dz_t])
+            v_t = M_R_u + additive_term_v
+            v1_t, v2_t = v_t[0], v_t[1]
 
-            d2theta_t = -(M/z_aux1_t)*(u_x_t*cos_th_t + u_y_t*sin_th_t) - \
-                            (2/z_aux1_t)*dtheta_t*dz_aux1_dt_t
-        
-            d2x_t = d2h_x_t + (l/3)*(-sin_th_t*dtheta_t**2 + cos_th_t*d2theta_t)
-            d2y_t = d2h_y_t + (l/3)*(cos_th_t*dtheta_t**2 + sin_th_t*d2theta_t)
-
-            fx_reactor_t = M*d2x_t
-            fy_reactor_t = M*d2y_t + M*g  
-
-            f_amplitude_t = np.sqrt(fx_reactor_t**2 + fy_reactor_t**2)
-        
-            Angle_thrust_inertial_t = np.arctan2(-fx_reactor_t/f_amplitude_t, fy_reactor_t/f_amplitude_t)
-            phi_t = Angle_thrust_inertial_t - theta_t
-        
-            phi_t = (phi_t + np.pi) % (2 * np.pi) - np.pi
-        
-            return (x_t, dx_t, y_t, dy_t, theta_t, dtheta_t, 
-                    z_aux1_t, dz_aux1_dt_t, f_amplitude_t, phi_t)
-
+            z_eff_t = z_t - M_f * (l_f/3) * dtheta_t**2
+            F_rad_eff_t = (M_f * l_f * v2_t) / (3 * z_t) if abs(z_t) > 1e-9 else 0.0
+           
+            f_t = np.sqrt(z_eff_t**2 + F_rad_eff_t**2)
+            phi_t = np.arctan2(-F_rad_eff_t, z_eff_t) 
+       
+            return x_t, dx_t, y_t, dy_t, theta_t, dtheta_t, z_t, dz_t, f_t, phi_t
         return fun
     return (compute,)
 
@@ -2274,63 +2274,6 @@ def _(compute, np, plt):
     M_param_glob = 1.0
     g_param_glob = 1.0 
                    
-    def calculate_h_derivatives(x_state, dx_state, y_state, dy_state,
-                                 theta_state, dtheta_state,
-                                 z_state, dz_state,
-                                 l, M, g):
-        sin_theta = np.sin(theta_state)
-        cos_theta = np.cos(theta_state)
-        h_x = x_state - (l / 3) * sin_theta
-        h_y = y_state + (l / 3) * cos_theta
-        dh_x = dx_state - (l / 3) * dtheta_state * cos_theta
-        dh_y = dy_state - (l / 3) * dtheta_state * sin_theta
-        d2h_x = (z_state / M) * sin_theta
-        d2h_y = -(z_state / M) * cos_theta - g
-        d3h_x = (1 / M) * (cos_theta * dtheta_state * z_state + sin_theta * dz_state)
-        d3h_y = (1 / M) * (sin_theta * dtheta_state * z_state - cos_theta * dz_state)
-        return h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y
-
-    def get_poly_coeffs_deg7(y0, dy0, ddy0, dddy0, yf, dyf, ddyf, dddyf, tf_poly):
-        if abs(tf_poly) < 1e-9: 
-            if not (np.allclose(y0,yf) and np.allclose(dy0,dyf) and \
-                    np.allclose(ddy0,ddyf) and np.allclose(dddy0,dddyf)):
-                 return np.array([y0, dy0, ddy0/2, dddy0/6, 0, 0, 0, 0]) # Approximation
-            return np.array([y0, dy0, ddy0/2, dddy0/6, 0, 0, 0, 0])
-
-        M_poly = np.array([
-            [1, 0,  0,   0,    0,     0,      0,       0     ],
-            [0, 1,  0,   0,    0,     0,      0,       0     ],
-            [0, 0,  2,   0,    0,     0,      0,       0     ],
-            [0, 0,  0,   6,    0,     0,      0,       0     ],
-            [1, tf_poly, tf_poly**2, tf_poly**3, tf_poly**4,  tf_poly**5,   tf_poly**6,    tf_poly**7  ],
-            [0, 1, 2*tf_poly,3*tf_poly**2,4*tf_poly**3,5*tf_poly**4, 6*tf_poly**5,  7*tf_poly**6  ],
-            [0, 0,  2,  6*tf_poly, 12*tf_poly**2,20*tf_poly**3,30*tf_poly**4, 42*tf_poly**5 ],
-            [0, 0,  0,   6,  24*tf_poly, 60*tf_poly**2,120*tf_poly**3,210*tf_poly**4]
-        ])
-        Y_conditions = np.array([y0, dy0, ddy0, dddy0, yf, dyf, ddyf, dddyf])
-        try:
-            coeffs = np.linalg.solve(M_poly, Y_conditions)
-        except np.linalg.LinAlgError:
-            print("Erreur: La matrice polynomiale est singulière. Vérifiez tf et les conditions.")
-            coeffs = np.zeros(8) 
-            coeffs[0] = y0 
-        return coeffs
-
-    def poly_val(coeffs, t_poly, order=0):
-        val = 0.0
-        if order == 0:
-            for i in range(len(coeffs)): val += coeffs[i] * (t_poly**i)
-        elif order == 1:
-            for i in range(1, len(coeffs)): val += i * coeffs[i] * (t_poly**(i-1 if i > 1 else 0) if t_poly != 0 or i-1 >= 0 else (coeffs[1] if i==1 else 0.0) )
-        elif order == 2:
-            for i in range(2, len(coeffs)): val += i*(i-1) * coeffs[i] * (t_poly**(i-2 if i > 2 else 0) if t_poly != 0 or i-2 >= 0 else (2*coeffs[2] if i==2 else 0.0))
-        elif order == 3:
-            for i in range(3, len(coeffs)): val += i*(i-1)*(i-2) * coeffs[i] * (t_poly**(i-3 if i > 3 else 0) if t_poly != 0 or i-3 >= 0 else (6*coeffs[3] if i==3 else 0.0))
-        elif order == 4:
-            for i in range(4, len(coeffs)): val += i*(i-1)*(i-2)*(i-3) * coeffs[i] * (t_poly**(i-4 if i > 4 else 0) if t_poly != 0 or i-4 >= 0 else (24*coeffs[4] if i==4 else 0.0))
-        else:
-            raise ValueError("Ordre de dérivation non supporté pour poly_val")
-        return val
 
     x_0_test, dx_0_test, y_0_test, dy_0_test = 5.0, 0.0, 20.0, -1.0
     theta_0_test, dtheta_0_test = -np.pi/8, 0.0
