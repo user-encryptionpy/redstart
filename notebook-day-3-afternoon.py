@@ -1686,6 +1686,12 @@ def _(mo):
     return
 
 
+@app.cell
+def _(mo):
+    mo.image(src="public/images/geo.png")
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -1994,6 +2000,26 @@ def _(mo):
     return
 
 
+@app.cell
+def _(M, g, l):
+    import math
+    from scipy.interpolate import CubicSpline
+
+    def T(x, dx, y, dy, theta, dtheta, z, dz):
+        hx = x - (l/3)*math.sin(theta)
+        hy = y - (l/3)*math.cos(theta)
+        dh_x = dx - (l/3) * dtheta * math.cos(theta)
+        dh_y = dy - (l/3) * dtheta * math.sin(theta)
+        d2h_x = z * math.sin(theta) / M
+        d2h_y = (-1) * math.cos(theta) / M - g
+        d3h_x = (1/M) * (dtheta * z * math.cos(theta) + dz * math.sin(theta))
+        d3h_y = (1/M) * (dtheta * z * math.sin(theta) - dz * math.cos(theta))
+        return hx, hy, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y
+
+    
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -2006,6 +2032,38 @@ def _(mo):
     Implement the corresponding function `T_inv`.
     """
     )
+    return
+
+
+@app.cell
+def _(M, g, l, np):
+    def T_inv(h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y):
+    
+        magnitude = np.sqrt(d3h_x**2 + d3h_y**2)
+        if magnitude < 1e-10:
+            raise ValueError("Cannot determine theta from near-zero third derivative")
+    
+        theta = np.arctan2(d3h_x, -d3h_y)  
+    
+        sin_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
+        z = - M * (sin_theta * d2h_x - cos_theta * d2h_y + cos_theta * g)
+    
+        dz = M * (sin_theta * d3h_x - cos_theta * d3h_y)
+    
+        # Project h^(3) onto [cos θ, sin θ] to get θ̇ * z component
+        dtheta_z = M * (cos_theta * d3h_x + sin_theta * d3h_y)
+    
+        # Compute dtheta
+        dtheta = dtheta_z / z
+    
+        x = h_x + (l/3) * sin_theta
+        y = h_y - (l/3) * cos_theta
+
+        dx = dh_x + (l/3) * cos_theta * dtheta
+        dy = dh_y + (l/3) * sin_theta * dtheta
+    
+        return x, dx, y, dy, theta, dtheta, z, dz
     return
 
 
@@ -2044,6 +2102,11 @@ def _(mo):
     that returns a function `fun` such that `fun(t)` is a value of `x, dx, y, dy, theta, dtheta, z, dz, f, phi` at time `t` that match the initial and final values provided as arguments to `compute`.
     """
     )
+    return
+
+
+@app.cell
+def _():
     return
 
 
