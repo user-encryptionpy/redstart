@@ -2038,45 +2038,28 @@ def _(mo):
 @app.cell
 def _(M, g, l, np):
     def T_inv(h_x, h_y, dh_x, dh_y, d2h_x, d2h_y, d3h_x, d3h_y):
+
+            tg_theta =   d2h_x / (d2h_y + g)
     
-        theta = np.arctan2(-d2h_x, d2h_y + g)
-
-        sin_theta = np.sin(theta)
-        cos_theta = np.cos(theta)
-
-        if abs(sin_theta) > 1e-8:
-            z1 = M * d2h_x / sin_theta
-        else:
-            z1 = None
+            theta = np.arcta2(tg_theta)  
+    
+            sin_theta = np.sin(theta)
+            cos_theta = np.cos(theta)
         
-        if abs(cos_theta) > 1e-8:
-            z2 = -M * (d2h_y + g) / cos_theta
-        else:
-            z2 = None
-        
-        # Combine z estimates
-        if z1 is not None and z2 is not None:
-            z = (z1 + z2) / 2.0
-        elif z1 is not None:
-            z = z1
-        elif z2 is not None:
-            z = z2
+            z = - M * np.sqrt( d2h_x*2 + (d2h_y + g)*2)
+    
+            dz = M * (d3h_x - tg_theta * d3h_y)/(2 * sin_theta)
+    
+            # Compute dtheta
+            dtheta = (M * d3h_y + dz * cos_theta)/(z * sin_theta)
+    
+            x = h_x + (l/3) * sin_theta
+            y = h_y - (l/3) * cos_theta
 
+            dx = dh_x + (l/3) * cos_theta * dtheta
+            dy = dh_y + (l/3) * sin_theta * dtheta
     
-        A = np.array([
-            [cos_theta * z, sin_theta],
-            [sin_theta * z, -cos_theta]
-        ])
-        b_vec = M * np.array([d3h_x, d3h_y])
-    
-        dtheta, dz = np.linalg.solve(A, b_vec)
-    
-        x = h_x + (l/3) * sin_theta
-        y = h_y - (l/3) * cos_theta
-        dx = dh_x + (l/3) * cos_theta * dtheta
-        dy = dh_y + (l/3) * sin_theta * dtheta
-    
-        return x, dx, y, dy, theta, dtheta, z, dz
+            return x, dx, y, dy, theta, dtheta, z, dz
     return
 
 
