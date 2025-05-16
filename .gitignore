@@ -1,0 +1,16 @@
+
+# pixi environments
+.pixi
+*.egg-info
+
+# Python
+__pycache__
+
+# Marimo
+__cache__
+
+# Jupyter
+.ipynb_checkpoints
+
+# Generated Videos
+*.mp4
